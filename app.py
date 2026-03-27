@@ -76,8 +76,14 @@ if page == "上传衣服":
                     if remove_bg:
                         try:
                             from rembg import remove
+                            # 转PIL再转numpy创建新数组
                             pil_img = Image.fromarray(img)
+                            buf = io.BytesIO()
+                            pil_img.save(buf, format='PNG')
+                            buf.seek(0)
+                            pil_img = Image.open(buf)
                             pil_img = remove(pil_img)
+                            # 再转回numpy
                             img = np.array(pil_img)
                         except Exception as e:
                             st.warning(f"抠图失败: {e}")
