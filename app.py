@@ -1,8 +1,9 @@
 import streamlit as st
 import os
 import uuid
-from PIL import Image
 import io
+import numpy as np
+from PIL import Image
 import database
 from rembg import remove
 
@@ -45,6 +46,15 @@ if st.sidebar.button("✨ 搭配", use_container_width=True):
 
 page = st.session_state.nav
 
+
+def load_image(bytes_data):
+    """安全加载图片，通过numpy创建新数组"""
+    img = Image.open(bytes_data)
+    img = img.convert("RGB")
+    arr = np.array(img)
+    return Image.fromarray(arr.astype('uint8'))
+
+
 # ===== 上传 =====
 if page == "上传衣服":
     st.title("📤 上传衣服")
@@ -53,11 +63,10 @@ if page == "上传衣服":
 
     with c1:
         uploaded = st.file_uploader("选择图片", type=["jpg", "jpeg", "png"])
+        img = None
         if uploaded:
-            # 读取bytes并创建新的Image对象
             bytes_data = uploaded.getvalue()
-            img = Image.open(io.BytesIO(bytes_data))
-            img = Image.frombytes(img.mode, img.size, img.tobytes())
+            img = load_image(io.BytesIO(bytes_data))
             st.image(img, use_container_width=True)
 
     with c2:
@@ -70,9 +79,7 @@ if page == "上传衣服":
 
                 if st.form_submit_button("💾 保存", use_container_width=True):
                     with st.spinner("处理中..."):
-                        # 从bytes重新创建图片
-                        img_process = Image.open(io.BytesIO(bytes_data))
-                        img_process = Image.frombytes(img_process.mode, img_process.size, img_process.tobytes())
+                        img_process = load_image(io.BytesIO(bytes_data))
 
                         if remove_bg:
                             img_process = remove(img_process)
