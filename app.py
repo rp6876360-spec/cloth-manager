@@ -2,10 +2,10 @@ import streamlit as st
 import os
 import uuid
 import io
-import numpy as np
-from PIL import Image
+import base64
 import database
 from rembg import remove
+from PIL import Image
 
 # 页面配置
 st.set_page_config(page_title="衣服管理助手", page_icon="👔", layout="wide")
@@ -18,7 +18,7 @@ st.markdown("""
     section[data-testid="stSidebar"] { background: #1A1A1A; }
     section[data-testid="stSidebar"] h2 { color: white !important; }
     .stTextInput input { background: white !important; color: #1A1A1A !important; }
-    .stButton button { background: white !important; color: #1A1A1A !important; border: 1px solid #CCC !important; }
+    .stButton > button { background: white !important; color: #1A1A1A !important; border: 1px solid #CCC !important; }
     .stCaption { color: #555 !important; }
 </style>
 """, unsafe_allow_html=True)
@@ -47,53 +47,50 @@ if st.sidebar.button("✨ 搭配", use_container_width=True):
 page = st.session_state.nav
 
 
-def load_image(bytes_data):
-    """安全加载图片，通过numpy创建新数组"""
-    img = Image.open(bytes_data)
-    img = img.convert("RGB")
-    arr = np.array(img)
-    return Image.fromarray(arr.astype('uint8'))
+def pil_to_b64(img):
+    """PIL图片转base64用于显示"""
+    buf = io.BytesIO()
+    img.save(buf, format='PNG')
+    return base64.b64encode(buf.getvalue()).decode()
 
 
 # ===== 上传 =====
 if page == "上传衣服":
     st.title("📤 上传衣服")
 
-    c1, c2 = st.columns([1, 1], gap="large")
+    uploaded = st.file_uploader("选择图片", type=["jpg", "jpeg", "png"])
 
-    with c1:
-        uploaded = st.file_uploader("选择图片", type=["jpg", "jpeg", "png"])
-        img = None
-        if uploaded:
-            bytes_data = uploaded.getvalue()
-            img = load_image(io.BytesIO(bytes_data))
-            st.image(img, use_container_width=True)
+    if uploaded:
+        # 直接显示文件信息，不预览
+        st.write(f"已选择: {uploaded.name}")
 
-    with c2:
-        if uploaded:
-            with st.form("form", clear_on_submit=True):
-                s = st.selectbox("季节", ["春秋装", "夏装", "冬装"])
-                cat = st.selectbox("类型", CATEGORIES)
-                kw = st.text_input("关键词", placeholder="蓝色、休闲")
-                remove_bg = st.checkbox("✂️ 自动抠图（去除背景）", value=False)
+        with st.form("form"):
+            s = st.selectbox("季节", ["春秋装", "夏装", "冬装"])
+            cat = st.selectbox("类型", CATEGORIES)
+            kw = st.text_input("关键词", placeholder="蓝色、休闲")
+            remove_bg = st.checkbox("✂️ 自动抠图（去除背景）", value=False)
 
-                if st.form_submit_button("💾 保存", use_container_width=True):
-                    with st.spinner("处理中..."):
-                        img_process = load_image(io.BytesIO(bytes_data))
+            if st.form_submit_button("💾 保存"):
+                with st.spinner("处理中..."):
+                    # 读取并处理
+                    bytes_data = uploaded.getvalue()
 
-                        if remove_bg:
-                            img_process = remove(img_process)
-                            if img_process.mode != "RGB":
-                                img_process = img_process.convert("RGB")
-                        else:
-                            if img_process.mode in ("RGBA", "P"):
-                                img_process = img_process.convert("RGB")
+                    # 用rembg处理
+                    input_img = Image.open(io.BytesIO(bytes_data))
+                    input_img = input_img.convert("RGB")
 
-                        fn = f"{uuid.uuid4()}.png"
-                        path = os.path.join(UPLOAD_DIR, fn)
-                        img_process.save(path, "PNG")
-                        database.add_cloth(path, s, cat, kw)
-                    st.success("保存成功!")
+                    if remove_bg:
+                        output_img = remove(input_img)
+                    else:
+                        output_img = input_img
+
+                    # 保存
+                    fn = f"{uuid.uuid4()}.png"
+                    path = os.path.join(UPLOAD_DIR, fn)
+                    output_img.save(path, "PNG")
+
+                    database.add_cloth(path, s, cat, kw)
+                st.success("保存成功!")
 
 # ===== 浏览 =====
 elif page == "浏览衣服":
@@ -118,7 +115,10 @@ elif page == "浏览衣服":
         for i, c in enumerate(clothes):
             with cols[i % 4]:
                 if os.path.exists(c[1]):
-                    st.image(c[1], use_container_width=True)
+                    # 用base64显示图片
+                    with open(c[1], "rb") as f:
+                        b64 = base64.b64encode(f.read()).decode()
+                    st.markdown(f'<img src="data:image/png;base64,{b64}" style="width:100%;">', unsafe_allow_html=True)
                 st.write(f"**{c[2]} {c[3]}**")
                 if c[4]:
                     st.caption(f"🏷️ {c[4]}")
@@ -178,7 +178,10 @@ elif page == "搭配":
             for i, (ic, cl, ct) in enumerate(items):
                 with cols[i]:
                     if os.path.exists(cl[1]):
-                        st.image(cl[1], caption=f"{ic} {ct}", use_container_width=True)
+                        with open(cl[1], "rb") as f:
+                            b64 = base64.b64encode(f.read()).decode()
+                        st.markdown(f'<img src="data:image/png;base64,{b64}" style="width:100%;">', unsafe_allow_html=True)
+                        st.caption(f"{ic} {ct}")
 
         kws = [c[4] for _, c, _ in items if c[4]]
         if kws:
