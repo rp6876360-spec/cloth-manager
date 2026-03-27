@@ -8,66 +8,16 @@ from rembg import remove
 # 页面配置
 st.set_page_config(page_title="衣服管理助手", page_icon="👔", layout="wide")
 
-# 强制覆盖Streamlit默认样式
+# CSS
 st.markdown("""
 <style>
-    /* 全局背景 */
-    section[data-testid="stMain"] {
-        background: #F0F0F0;
-    }
-
-    /* 主容器 */
-    .main .block-container {
-        padding-top: 2rem;
-    }
-
-    /* 标题 - 强制黑色 */
-    h1, h2, h3, h4, h5, h6, p, div, label, span {
-        color: #1A1A1A !important;
-    }
-
-    /* 侧边栏 */
-    section[data-testid="stSidebar"] {
-        background: #1A1A1A;
-    }
-    section[data-testid="stSidebar"] h2 {
-        color: white !important;
-    }
-
-    /* 输入框背景 */
-    .stTextInput input {
-        background: white !important;
-        color: #1A1A1A !important;
-        border: 1px solid #CCC !important;
-    }
-
-    /* 下拉框 */
-    .stSelectbox div[data-baseweb="select"] > div {
-        background: white !important;
-        color: #1A1A1A !important;
-    }
-
-    /* 卡片 */
-    [data-testid="stVerticalBlock"] .stMarkdown {
-        color: #1A1A1A;
-    }
-
-    /* 空状态文字 */
-    .stAlert {
-        color: #1A1A1A !important;
-    }
-
-    /* Caption文字 */
-    .stCaption {
-        color: #555 !important;
-    }
-
-    /* 按钮 */
-    .stButton button {
-        background: white !important;
-        color: #1A1A1A !important;
-        border: 1px solid #CCC !important;
-    }
+    section[data-testid="stMain"] { background: #F0F0F0; }
+    h1, h2, h3, p, div, label, span { color: #1A1A1A !important; }
+    section[data-testid="stSidebar"] { background: #1A1A1A; }
+    section[data-testid="stSidebar"] h2 { color: white !important; }
+    .stTextInput input { background: white !important; color: #1A1A1A !important; }
+    .stButton button { background: white !important; color: #1A1A1A !important; border: 1px solid #CCC !important; }
+    .stCaption { color: #555 !important; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -79,10 +29,9 @@ os.makedirs(UPLOAD_DIR, exist_ok=True)
 CATEGORIES = ["上装", "下装", "鞋子", "帽子", "首饰", "其他配饰"]
 CATEGORY_ICONS = {"上装": "👕", "下装": "👖", "鞋子": "👟", "帽子": "🧢", "首饰": "📿", "其他配饰": "🎒"}
 
-# 侧边栏 - 使用buttons
+# 侧边栏
 st.sidebar.markdown("<h2>衣服管理</h2>", unsafe_allow_html=True)
 
-# 自定义导航
 if "nav" not in st.session_state:
     st.session_state.nav = "上传衣服"
 
@@ -106,9 +55,12 @@ if page == "上传衣服":
     with c1:
         uploaded = st.file_uploader("选择图片", type=["jpg", "jpeg", "png"])
         if uploaded:
-            img = Image.open(uploaded)
-            img = img.copy()  # 复制图片避免只读问题
-            st.image(img, use_container_width=True)
+            # 先保存临时文件再读取
+            temp_path = os.path.join(UPLOAD_DIR, f"temp_{uploaded.name}")
+            with open(temp_path, "wb") as f:
+                f.write(uploaded.getvalue())
+            img = Image.open(temp_path)
+            st.image(temp_path, use_container_width=True)
 
     with c2:
         if uploaded:
@@ -116,7 +68,6 @@ if page == "上传衣服":
                 s = st.selectbox("季节", ["春秋装", "夏装", "冬装"])
                 cat = st.selectbox("类型", CATEGORIES)
                 kw = st.text_input("关键词", placeholder="蓝色、休闲")
-
                 remove_bg = st.checkbox("✂️ 自动抠图（去除背景）", value=False)
 
                 if st.form_submit_button("💾 保存", use_container_width=True):
@@ -125,20 +76,23 @@ if page == "上传衣服":
                         fn = f"{uuid.uuid4()}.{ext}"
                         path = os.path.join(UPLOAD_DIR, fn)
 
-                        # 复制图片避免只读问题
-                        img_to_save = img.copy()
+                        # 重新打开图片处理
+                        img_process = Image.open(temp_path)
 
-                        # 抠图处理
                         if remove_bg:
-                            img_to_save = remove(img_to_save)
-                            # 转为RGB保存
-                            if img_to_save.mode != "RGB":
-                                img_to_save = img_to_save.convert("RGB")
+                            img_process = remove(img_process)
+                            if img_process.mode != "RGB":
+                                img_process = img_process.convert("RGB")
                         else:
-                            if img_to_save.mode in ("RGBA", "P"):
-                                img_to_save = img_to_save.convert("RGB")
+                            if img_process.mode in ("RGBA", "P"):
+                                img_process = img_process.convert("RGB")
 
-                        img_to_save.save(path)
+                        img_process.save(path)
+
+                        # 删除临时文件
+                        if os.path.exists(temp_path):
+                            os.remove(temp_path)
+
                         database.add_cloth(path, s, cat, kw)
                     st.success("保存成功!")
 
@@ -146,7 +100,6 @@ if page == "上传衣服":
 elif page == "浏览衣服":
     st.title("👚 我的衣橱")
 
-    # 筛选
     col1, col2, col3, col4 = st.columns([1, 1, 2, 1])
     with col1:
         fs = st.selectbox("季节", ["全部", "春秋装", "夏装", "冬装"])
@@ -159,22 +112,20 @@ elif page == "浏览衣服":
             st.rerun()
 
     clothes = database.get_clothes_by_filter(fs, fc, fk)
-
     st.write(f"**共 {len(clothes)} 件**")
 
     if clothes:
         cols = st.columns(4, gap="large")
         for i, c in enumerate(clothes):
             with cols[i % 4]:
-                with st.container():
-                    if os.path.exists(c[1]):
-                        st.image(c[1], use_container_width=True)
-                    st.write(f"**{c[2]} {c[3]}**")
-                    if c[4]:
-                        st.caption(f"🏷️ {c[4]}")
-                    if st.button(f"🗑️ 删除", key=f"del_{c[0]}"):
-                        database.delete_cloth(c[0])
-                        st.rerun()
+                if os.path.exists(c[1]):
+                    st.image(c[1], use_container_width=True)
+                st.write(f"**{c[2]} {c[3]}**")
+                if c[4]:
+                    st.caption(f"🏷️ {c[4]}")
+                if st.button(f"🗑️ 删除", key=f"del_{c[0]}"):
+                    database.delete_cloth(c[0])
+                    st.rerun()
     else:
         st.info("还没有衣服，去上传页面添加吧")
 
@@ -184,7 +135,6 @@ elif page == "搭配":
 
     clothes_by = {cat: database.get_clothes_by_category(cat) for cat in CATEGORIES}
 
-    # 选择器
     c1, c2, c3 = st.columns(3)
     sel = {}
     with c1:
@@ -208,7 +158,6 @@ elif page == "搭配":
         t = ["不选"] + [f"{c[2]} | {c[4] or '-'}" for c in clothes_by["其他配饰"]] if clothes_by["其他配饰"] else []
         sel["其他配饰"] = st.selectbox("🎒 配饰", t) if t else st.warning("暂无配饰")
 
-    # 显示搭配
     has_sel = any(v and v != "不选" for v in sel.values() if v)
 
     if has_sel:
