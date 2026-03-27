@@ -7,12 +7,12 @@ import database
 # 页面配置
 st.set_page_config(page_title="衣服管理助手", page_icon="👔", layout="wide")
 
-# Shadcn风格CSS - 改进版
+# CSS样式
 st.markdown("""
 <style>
     /* 全局 */
     .stApp {
-        background: #FAFAFA;
+        background: #F5F5F5;
     }
 
     /* 标题 */
@@ -22,11 +22,11 @@ st.markdown("""
         color: #171717;
         margin-bottom: 1.5rem;
     }
-    h3 {
+    h3, h4 {
         font-size: 1rem;
         font-weight: 600;
         color: #171717;
-        margin-bottom: 1rem;
+        margin-bottom: 0.75rem;
     }
 
     /* 卡片 */
@@ -50,9 +50,6 @@ st.markdown("""
     .stButton > button:hover {
         background: #F5F5F5;
     }
-    .stButton > button:active {
-        background: #EBEBEB;
-    }
 
     /* Primary按钮 */
     .primary-btn button {
@@ -64,36 +61,50 @@ st.markdown("""
         background: #404040;
     }
 
-    /* 侧边栏 */
+    /* 侧边栏 - 大按钮布局 */
     [data-testid="stSidebar"] {
         background: #171717;
-        padding: 1rem 0.5rem;
+        padding: 1rem;
     }
     [data-testid="stSidebar"] h2 {
         color: white;
         font-size: 1.25rem;
-        padding: 0 0.75rem 1rem;
+        padding-bottom: 1rem;
         border-bottom: 1px solid #333;
         margin-bottom: 1rem;
+        text-align: center;
     }
     [data-testid="stSidebar"] .stRadio > div {
         flex-direction: column;
-        gap: 0.25rem;
+        gap: 0.5rem;
     }
     [data-testid="stSidebar"] .stRadio > label {
+        display: block;
+        background: #262626;
         color: #A3A3A3 !important;
-        font-size: 0.9rem;
-        padding: 0.6rem 0.75rem;
-        border-radius: 6px;
+        font-size: 1rem;
+        padding: 1rem;
+        border-radius: 8px;
         margin: 0;
+        text-align: center;
+        border: 1px solid transparent;
     }
     [data-testid="stSidebar"] .stRadio > label:hover {
+        background: #333;
         color: white !important;
-        background: #262626;
     }
     [data-testid="stSidebar"] div[aria-checked="true"] > label {
         background: #404040 !important;
+        border-color: #666 !important;
         color: white !important;
+    }
+    [data-testid="stSidebar"] .stRadio {
+        display: flex;
+        flex-direction: column;
+        gap: 0.5rem;
+    }
+    [data-testid="stSidebar"] .stRadio > div {
+        gap: 0.5rem;
     }
 
     /* 标签 */
@@ -121,6 +132,7 @@ st.markdown("""
         border-radius: 6px;
         padding: 2rem;
         text-align: center;
+        background: white;
     }
 
     /* 筛选栏 */
@@ -130,9 +142,6 @@ st.markdown("""
         border-radius: 6px;
         padding: 0.75rem 1rem;
         margin-bottom: 1rem;
-    }
-    .filter-bar .stSelectbox > div > div {
-        background: #FAFAFA;
     }
 
     /* 空状态 */
