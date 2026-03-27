@@ -2,6 +2,7 @@ import streamlit as st
 import os
 import uuid
 from PIL import Image
+import io
 import database
 from rembg import remove
 
@@ -35,14 +36,12 @@ st.sidebar.markdown("<h2>衣服管理</h2>", unsafe_allow_html=True)
 if "nav" not in st.session_state:
     st.session_state.nav = "上传衣服"
 
-cols = st.sidebar.columns(1)
-with cols[0]:
-    if st.button("📤 上传衣服", use_container_width=True):
-        st.session_state.nav = "上传衣服"
-    if st.button("👚 浏览衣服", use_container_width=True):
-        st.session_state.nav = "浏览衣服"
-    if st.button("✨ 搭配", use_container_width=True):
-        st.session_state.nav = "搭配"
+if st.sidebar.button("📤 上传衣服", use_container_width=True):
+    st.session_state.nav = "上传衣服"
+if st.sidebar.button("👚 浏览衣服", use_container_width=True):
+    st.session_state.nav = "浏览衣服"
+if st.sidebar.button("✨ 搭配", use_container_width=True):
+    st.session_state.nav = "搭配"
 
 page = st.session_state.nav
 
@@ -55,16 +54,11 @@ if page == "上传衣服":
     with c1:
         uploaded = st.file_uploader("选择图片", type=["jpg", "jpeg", "png"])
         if uploaded:
-            # 保存到临时文件并转换为PNG避免只读问题
-            temp_path = os.path.join(UPLOAD_DIR, f"temp_{uuid.uuid4()}.png")
+            # 读取bytes并创建新的Image对象
             bytes_data = uploaded.getvalue()
-            with open(temp_path, "wb") as f:
-                f.write(bytes_data)
-            # 用PNG格式重新打开
-            img = Image.open(temp_path)
-            img = img.convert("RGB")
-            img.save(temp_path, "PNG")
-            st.image(temp_path, use_container_width=True)
+            img = Image.open(io.BytesIO(bytes_data))
+            img = Image.frombytes(img.mode, img.size, img.tobytes())
+            st.image(img, use_container_width=True)
 
     with c2:
         if uploaded:
@@ -76,12 +70,9 @@ if page == "上传衣服":
 
                 if st.form_submit_button("💾 保存", use_container_width=True):
                     with st.spinner("处理中..."):
-                        ext = "png"
-                        fn = f"{uuid.uuid4()}.{ext}"
-                        path = os.path.join(UPLOAD_DIR, fn)
-
-                        # 重新从临时文件打开并处理
-                        img_process = Image.open(temp_path)
+                        # 从bytes重新创建图片
+                        img_process = Image.open(io.BytesIO(bytes_data))
+                        img_process = Image.frombytes(img_process.mode, img_process.size, img_process.tobytes())
 
                         if remove_bg:
                             img_process = remove(img_process)
@@ -91,12 +82,9 @@ if page == "上传衣服":
                             if img_process.mode in ("RGBA", "P"):
                                 img_process = img_process.convert("RGB")
 
-                        img_process.save(path)
-
-                        # 删除临时文件
-                        if os.path.exists(temp_path):
-                            os.remove(temp_path)
-
+                        fn = f"{uuid.uuid4()}.png"
+                        path = os.path.join(UPLOAD_DIR, fn)
+                        img_process.save(path, "PNG")
                         database.add_cloth(path, s, cat, kw)
                     st.success("保存成功!")
 
