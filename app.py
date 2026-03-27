@@ -221,7 +221,7 @@ page = st.sidebar.radio("导航", ["上传衣服", "浏览衣服", "搭配"], la
 if page == "上传衣服":
     st.title("上传衣服")
 
-    col1, col2 = st.columns([1, 1], gap="2rem")
+    col1, col2 = st.columns([1, 1], gap="medium")
 
     with col1:
         st.markdown('<div class="upload-box">', unsafe_allow_html=True)
