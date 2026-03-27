@@ -3,6 +3,7 @@ import os
 import uuid
 import io
 import base64
+import tempfile
 import database
 from rembg import remove
 from PIL import Image
@@ -47,11 +48,26 @@ if st.sidebar.button("✨ 搭配", use_container_width=True):
 page = st.session_state.nav
 
 
-def pil_to_b64(img):
-    """PIL图片转base64用于显示"""
-    buf = io.BytesIO()
-    img.save(buf, format='PNG')
-    return base64.b64encode(buf.getvalue()).decode()
+def process_image(bytes_data, remove_bg=False):
+    """处理图片 - 先写入临时文件再读取"""
+    # 写入临时文件
+    with tempfile.NamedTemporaryFile(delete=False, suffix='.jpg') as tmp:
+        tmp.write(bytes_data)
+        tmp_path = tmp.name
+
+    try:
+        # 从文件读取
+        img = Image.open(tmp_path)
+        img.load()  # 强制加载
+
+        if remove_bg:
+            img = remove(img)
+
+        return img
+    finally:
+        # 删除临时文件
+        if os.path.exists(tmp_path):
+            os.remove(tmp_path)
 
 
 # ===== 上传 =====
@@ -61,7 +77,6 @@ if page == "上传衣服":
     uploaded = st.file_uploader("选择图片", type=["jpg", "jpeg", "png"])
 
     if uploaded:
-        # 直接显示文件信息，不预览
         st.write(f"已选择: {uploaded.name}")
 
         with st.form("form"):
@@ -72,17 +87,10 @@ if page == "上传衣服":
 
             if st.form_submit_button("💾 保存"):
                 with st.spinner("处理中..."):
-                    # 读取并处理
                     bytes_data = uploaded.getvalue()
 
-                    # 用rembg处理
-                    input_img = Image.open(io.BytesIO(bytes_data))
-                    input_img = input_img.convert("RGB")
-
-                    if remove_bg:
-                        output_img = remove(input_img)
-                    else:
-                        output_img = input_img
+                    # 处理图片
+                    output_img = process_image(bytes_data, remove_bg)
 
                     # 保存
                     fn = f"{uuid.uuid4()}.png"
@@ -115,7 +123,6 @@ elif page == "浏览衣服":
         for i, c in enumerate(clothes):
             with cols[i % 4]:
                 if os.path.exists(c[1]):
-                    # 用base64显示图片
                     with open(c[1], "rb") as f:
                         b64 = base64.b64encode(f.read()).decode()
                     st.markdown(f'<img src="data:image/png;base64,{b64}" style="width:100%;">', unsafe_allow_html=True)
