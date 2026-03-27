@@ -3,9 +3,9 @@ import os
 import uuid
 import io
 import base64
-import tempfile
+import cv2
+import numpy as np
 import database
-from rembg import remove
 from PIL import Image
 
 # 页面配置
@@ -48,28 +48,6 @@ if st.sidebar.button("✨ 搭配", use_container_width=True):
 page = st.session_state.nav
 
 
-def process_image(bytes_data, remove_bg=False):
-    """处理图片 - 先写入临时文件再读取"""
-    # 写入临时文件
-    with tempfile.NamedTemporaryFile(delete=False, suffix='.jpg') as tmp:
-        tmp.write(bytes_data)
-        tmp_path = tmp.name
-
-    try:
-        # 从文件读取
-        img = Image.open(tmp_path)
-        img.load()  # 强制加载
-
-        if remove_bg:
-            img = remove(img)
-
-        return img
-    finally:
-        # 删除临时文件
-        if os.path.exists(tmp_path):
-            os.remove(tmp_path)
-
-
 # ===== 上传 =====
 if page == "上传衣服":
     st.title("📤 上传衣服")
@@ -89,13 +67,26 @@ if page == "上传衣服":
                 with st.spinner("处理中..."):
                     bytes_data = uploaded.getvalue()
 
-                    # 处理图片
-                    output_img = process_image(bytes_data, remove_bg)
+                    # 用OpenCV读取
+                    nparr = np.frombuffer(bytes_data, np.uint8)
+                    img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+                    img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+
+                    # 抠图
+                    if remove_bg:
+                        try:
+                            from rembg import remove
+                            pil_img = Image.fromarray(img)
+                            pil_img = remove(pil_img)
+                            img = np.array(pil_img)
+                        except Exception as e:
+                            st.warning(f"抠图失败: {e}")
 
                     # 保存
+                    img_bgr = cv2.cvtColor(img, cv2.COLOR_RGB2BGR)
                     fn = f"{uuid.uuid4()}.png"
                     path = os.path.join(UPLOAD_DIR, fn)
-                    output_img.save(path, "PNG")
+                    cv2.imwrite(path, img_bgr)
 
                     database.add_cloth(path, s, cat, kw)
                 st.success("保存成功!")
