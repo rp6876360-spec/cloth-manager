@@ -3,6 +3,7 @@ import os
 import uuid
 from PIL import Image
 import database
+from rembg import remove
 
 # 页面配置
 st.set_page_config(page_title="衣服管理助手", page_icon="👔", layout="wide")
@@ -115,14 +116,26 @@ if page == "上传衣服":
                 cat = st.selectbox("类型", CATEGORIES)
                 kw = st.text_input("关键词", placeholder="蓝色、休闲")
 
+                remove_bg = st.checkbox("✂️ 自动抠图（去除背景）", value=False)
+
                 if st.form_submit_button("💾 保存", use_container_width=True):
-                    ext = uploaded.name.split('.')[-1]
-                    fn = f"{uuid.uuid4()}.{ext}"
-                    path = os.path.join(UPLOAD_DIR, fn)
-                    if img.mode in ("RGBA", "P"):
-                        img = img.convert("RGB")
-                    img.save(path)
-                    database.add_cloth(path, s, cat, kw)
+                    with st.spinner("处理中..."):
+                        ext = uploaded.name.split('.')[-1]
+                        fn = f"{uuid.uuid4()}.{ext}"
+                        path = os.path.join(UPLOAD_DIR, fn)
+
+                        # 抠图处理
+                        if remove_bg:
+                            img = remove(img)
+                            # 转为RGB保存
+                            if img.mode != "RGB":
+                                img = img.convert("RGB")
+                        else:
+                            if img.mode in ("RGBA", "P"):
+                                img = img.convert("RGB")
+
+                        img.save(path)
+                        database.add_cloth(path, s, cat, kw)
                     st.success("保存成功!")
 
 # ===== 浏览 =====

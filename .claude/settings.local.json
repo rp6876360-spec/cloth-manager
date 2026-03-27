@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(pip install:*)",
+      "Bash(streamlit run:*)",
+      "Bash(git config:*)",
+      "Bash(gh:*)"
+    ]
+  }
+}
