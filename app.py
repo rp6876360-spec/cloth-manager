@@ -55,11 +55,15 @@ if page == "上传衣服":
     with c1:
         uploaded = st.file_uploader("选择图片", type=["jpg", "jpeg", "png"])
         if uploaded:
-            # 先保存临时文件再读取
-            temp_path = os.path.join(UPLOAD_DIR, f"temp_{uploaded.name}")
+            # 保存到临时文件并转换为PNG避免只读问题
+            temp_path = os.path.join(UPLOAD_DIR, f"temp_{uuid.uuid4()}.png")
+            bytes_data = uploaded.getvalue()
             with open(temp_path, "wb") as f:
-                f.write(uploaded.getvalue())
+                f.write(bytes_data)
+            # 用PNG格式重新打开
             img = Image.open(temp_path)
+            img = img.convert("RGB")
+            img.save(temp_path, "PNG")
             st.image(temp_path, use_container_width=True)
 
     with c2:
@@ -72,11 +76,11 @@ if page == "上传衣服":
 
                 if st.form_submit_button("💾 保存", use_container_width=True):
                     with st.spinner("处理中..."):
-                        ext = uploaded.name.split('.')[-1]
+                        ext = "png"
                         fn = f"{uuid.uuid4()}.{ext}"
                         path = os.path.join(UPLOAD_DIR, fn)
 
-                        # 重新打开图片处理
+                        # 重新从临时文件打开并处理
                         img_process = Image.open(temp_path)
 
                         if remove_bg:
