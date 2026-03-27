@@ -107,6 +107,7 @@ if page == "上传衣服":
         uploaded = st.file_uploader("选择图片", type=["jpg", "jpeg", "png"])
         if uploaded:
             img = Image.open(uploaded)
+            img = img.copy()  # 复制图片避免只读问题
             st.image(img, use_container_width=True)
 
     with c2:
@@ -124,17 +125,20 @@ if page == "上传衣服":
                         fn = f"{uuid.uuid4()}.{ext}"
                         path = os.path.join(UPLOAD_DIR, fn)
 
+                        # 复制图片避免只读问题
+                        img_to_save = img.copy()
+
                         # 抠图处理
                         if remove_bg:
-                            img = remove(img)
+                            img_to_save = remove(img_to_save)
                             # 转为RGB保存
-                            if img.mode != "RGB":
-                                img = img.convert("RGB")
+                            if img_to_save.mode != "RGB":
+                                img_to_save = img_to_save.convert("RGB")
                         else:
-                            if img.mode in ("RGBA", "P"):
-                                img = img.convert("RGB")
+                            if img_to_save.mode in ("RGBA", "P"):
+                                img_to_save = img_to_save.convert("RGB")
 
-                        img.save(path)
+                        img_to_save.save(path)
                         database.add_cloth(path, s, cat, kw)
                     st.success("保存成功!")
 
