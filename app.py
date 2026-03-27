@@ -50,6 +50,10 @@ st.markdown("""
     .tag-season-winter { background: #E6E6FA; color: #9370DB; }
     .tag-category-top { background: #FFFACD; color: #DAA520; }
     .tag-category-bottom { background: #E0FFFF; color: #20B2AA; }
+    .tag-category-shoes { background: #FFDAB9; color: #CD853F; }
+    .tag-category-hat { background: #E6E6FA; color: #8A2BE2; }
+    .tag-category-jewelry { background: #FFC0CB; color: #DB7093; }
+    .tag-category-accessory { background: #98FB98; color: #228B22; }
 
     /* 侧边栏样式 */
     [data-testid="stSidebar"] {
@@ -95,6 +99,14 @@ st.markdown("""
         padding: 30px;
         margin-top: 20px;
     }
+
+    /* 多选框样式 */
+    .category-grid {
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        gap: 10px;
+        margin-bottom: 20px;
+    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -104,6 +116,17 @@ database.init_db()
 # 上传目录
 UPLOAD_DIR = "uploads"
 os.makedirs(UPLOAD_DIR, exist_ok=True)
+
+# 服装类别配置
+CATEGORIES = ["上装", "下装", "鞋子", "帽子", "首饰", "其他配饰"]
+CATEGORY_ICONS = {
+    "上装": "👕",
+    "下装": "👖",
+    "鞋子": "👟",
+    "帽子": "🧢",
+    "首饰": "📿",
+    "其他配饰": "🎒"
+}
 
 # 侧边栏导航
 st.sidebar.markdown("<h2 style='color: white; text-align: center;'>👔 衣服管理</h2>", unsafe_allow_html=True)
@@ -136,7 +159,7 @@ if page == "上传衣服":
                 with col_season:
                     season = st.selectbox("季节", ["春秋装", "夏装", "冬装"], help="选择适合的季节")
                 with col_category:
-                    category = st.selectbox("类型", ["上装", "下装"], help="选择上装或下装")
+                    category = st.selectbox("类型", CATEGORIES, help="选择服装类型")
 
                 keywords = st.text_input("关键词", placeholder="如：蓝色、休闲、上班、棉麻", help="用逗号分隔多个关键词")
 
@@ -168,7 +191,7 @@ elif page == "浏览衣服":
         with col1:
             filter_season = st.selectbox("季节", ["全部", "春秋装", "夏装", "冬装"])
         with col2:
-            filter_category = st.selectbox("类型", ["全部", "上装", "下装"])
+            filter_category = st.selectbox("类型", ["全部"] + CATEGORIES)
         with col3:
             filter_keyword = st.text_input("🔍 搜索关键词", placeholder="输入关键词...", label_visibility="collapsed")
         with col4:
@@ -196,7 +219,17 @@ elif page == "浏览衣服":
 
                 # 标签
                 season_class = "tag-season-spring" if cloth[2] == "春秋装" else ("tag-season-summer" if cloth[2] == "夏装" else "tag-season-winter")
-                category_class = "tag-category-top" if cloth[3] == "上装" else "tag-category-bottom"
+
+                # 根据类别选择样式
+                category_class_map = {
+                    "上装": "tag-category-top",
+                    "下装": "tag-category-bottom",
+                    "鞋子": "tag-category-shoes",
+                    "帽子": "tag-category-hat",
+                    "首饰": "tag-category-jewelry",
+                    "其他配饰": "tag-category-accessory"
+                }
+                category_class = category_class_map.get(cloth[3], "tag-category-top")
 
                 st.markdown(f"""
                 <span class='tag {season_class}'>{cloth[2]}</span>
@@ -222,52 +255,103 @@ elif page == "浏览衣服":
 elif page == "搭配":
     st.markdown("<h1 class='main-title'>✨ 穿搭搭配</h1>", unsafe_allow_html=True)
 
-    tops = database.get_clothes_by_category("上装")
-    bottoms = database.get_clothes_by_category("下装")
+    # 获取所有类别的衣服
+    clothes_by_category = {}
+    for cat in CATEGORIES:
+        clothes_by_category[cat] = database.get_clothes_by_category(cat)
 
-    col1, col2 = st.columns(2, gap="large")
+    # 显示各类别的选择器
+    st.markdown("<div class='cloth-card'>", unsafe_allow_html=True)
+    st.markdown("### 👔 选择要搭配的单品")
 
+    # 创建多列布局，每行显示可叠穿的类别
+    selected_items = {}
+
+    # 第一行：主要衣物（上装、下装、鞋子）
+    col1, col2, col3 = st.columns(3)
     with col1:
-        st.markdown("<div class='cloth-card'>", unsafe_allow_html=True)
-        st.markdown("### 👕 上装")
-        if tops:
-            top_options = {f"{c[2]} | {c[4] if c[4] else '无关键词'}": c for c in tops}
-            options_list = ["选择上装..."] + list(top_options.keys())
-            selected_top = st.selectbox("", options_list, label_visibility="collapsed", key="top_select")
+        if clothes_by_category["上装"]:
+            options = ["不选"] + [f"{c[2]} | {c[4] if c[4] else '无'}" for c in clothes_by_category["上装"]]
+            selected_items["上装"] = st.selectbox(f"👕 上装", options, key="top_select")
         else:
-            st.info("还没有上装，先去上传一些吧！")
-            selected_top = None
-        st.markdown("</div>", unsafe_allow_html=True)
+            st.info("暂无上装")
 
     with col2:
-        st.markdown("<div class='cloth-card'>", unsafe_allow_html=True)
-        st.markdown("### 👖 下装")
-        if bottoms:
-            bottom_options = {f"{c[2]} | {c[4] if c[4] else '无关键词'}": c for c in bottoms}
-            options_list = ["选择下装..."] + list(bottom_options.keys())
-            selected_bottom = st.selectbox("", options_list, label_visibility="collapsed", key="bottom_select")
+        if clothes_by_category["下装"]:
+            options = ["不选"] + [f"{c[2]} | {c[4] if c[4] else '无'}" for c in clothes_by_category["下装"]]
+            selected_items["下装"] = st.selectbox(f"👖 下装", options, key="bottom_select")
         else:
-            st.info("还没有下装，先去上传一些吧！")
-            selected_bottom = None
-        st.markdown("</div>", unsafe_allow_html=True)
+            st.info("暂无下装")
 
-    if selected_top and selected_bottom and selected_top != "选择上装..." and selected_bottom != "选择下装...":
+    with col3:
+        if clothes_by_category["鞋子"]:
+            options = ["不选"] + [f"{c[2]} | {c[4] if c[4] else '无'}" for c in clothes_by_category["鞋子"]]
+            selected_items["鞋子"] = st.selectbox(f"👟 鞋子", options, key="shoes_select")
+        else:
+            st.info("暂无鞋子")
+
+    # 第二行：配饰
+    col4, col5, col6 = st.columns(3)
+    with col4:
+        if clothes_by_category["帽子"]:
+            options = ["不选"] + [f"{c[2]} | {c[4] if c[4] else '无'}" for c in clothes_by_category["帽子"]]
+            selected_items["帽子"] = st.selectbox(f"🧢 帽子", options, key="hat_select")
+        else:
+            st.info("暂无帽子")
+
+    with col5:
+        if clothes_by_category["首饰"]:
+            options = ["不选"] + [f"{c[2]} | {c[4] if c[4] else '无'}" for c in clothes_by_category["首饰"]]
+            selected_items["首饰"] = st.selectbox(f"📿 首饰", options, key="jewelry_select")
+        else:
+            st.info("暂无首饰")
+
+    with col6:
+        if clothes_by_category["其他配饰"]:
+            options = ["不选"] + [f"{c[2]} | {c[4] if c[4] else '无'}" for c in clothes_by_category["其他配饰"]]
+            selected_items["其他配饰"] = st.selectbox(f"🎒 其他配饰", options, key="accessory_select")
+        else:
+            st.info("暂无配饰")
+
+    st.markdown("</div>", unsafe_allow_html=True)
+
+    # 显示搭配效果
+    has_selection = any(v != "不选" for v in selected_items.values() if v)
+
+    if has_selection:
         st.markdown("<div class='outfit-preview'>", unsafe_allow_html=True)
         st.markdown("### 🎉 搭配效果", unsafe_allow_html=True)
 
-        top_cloth = top_options[selected_top]
-        bottom_cloth = bottom_options[selected_bottom]
+        # 准备显示的图片
+        display_items = []
 
-        col1, col2 = st.columns(2, gap="large")
+        for category, selection in selected_items.items():
+            if selection and selection != "不选":
+                # 找到对应的衣服
+                for c in clothes_by_category[category]:
+                    display_str = f"{c[2]} | {c[4] if c[4] else '无'}"
+                    if display_str == selection:
+                        display_items.append((CATEGORY_ICONS.get(category, "👔"), c, category))
+                        break
 
-        with col1:
-            if os.path.exists(top_cloth[1]):
-                st.image(top_cloth[1], caption=f"👕 {top_cloth[2]} - {top_cloth[3]}", use_container_width=True)
+        # 按顺序显示：上装 -> 下装 -> 鞋子 -> 帽子 -> 首饰 -> 配饰
+        display_items.sort(key=lambda x: CATEGORIES.index(x[2]) if x[2] in CATEGORIES else 999)
 
-        with col2:
-            if os.path.exists(bottom_cloth[1]):
-                st.image(bottom_cloth[1], caption=f"👖 {bottom_cloth[2]} - {bottom_cloth[3]}", use_container_width=True)
+        # 显示所有选中的单品
+        if display_items:
+            # 计算需要的列数
+            n_items = len(display_items)
+            cols = st.columns(min(n_items, 4))
 
-        st.markdown("---")
-        st.markdown(f"**搭配关键词**: {top_cloth[4] if top_cloth[4] else ''} + {bottom_cloth[4] if bottom_cloth[4] else ''}", unsafe_allow_html=True)
+            for i, (icon, cloth, cat) in enumerate(display_items):
+                with cols[i % 4]:
+                    if os.path.exists(cloth[1]):
+                        st.image(cloth[1], caption=f"{icon} {cat}", use_container_width=True)
+
+        # 显示搭配关键词
+        keywords_list = [c[4] for _, c, _ in display_items if c[4]]
+        if keywords_list:
+            st.markdown("---")
+            st.markdown(f"**搭配关键词**: {' + '.join(keywords_list)}", unsafe_allow_html=True)
+
         st.markdown("</div>", unsafe_allow_html=True)
