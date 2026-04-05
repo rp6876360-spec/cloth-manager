@@ -135,113 +135,52 @@ elif page == "搭配":
     clothes_by = {cat: database.get_clothes_by_category(cat) for cat in CATEGORIES}
 
     # 初始化session state
-    if "outfit_items" not in st.session_state:
-        st.session_state.outfit_items = []
+    if "outfit" not in st.session_state:
+        st.session_state.outfit = {}
 
-    # 衣服选择区
+    # 衣服选择
     st.markdown("### 📋 选择衣服")
 
-    # 按类别显示
-    for cat in CATEGORIES:
-        items = clothes_by[cat]
-        if items:
-            st.markdown(f"**{CATEGORY_ICONS[cat]} {cat}** ({len(items)}件)")
-            cols = st.columns(min(len(items), 6))
-            for i, c in enumerate(items):
-                with cols[i]:
-                    if os.path.exists(c[1]):
-                        with open(c[1], "rb") as f:
-                            b64 = base64.b64encode(f.read()).decode()
-                        st.markdown(f'<img src="data:image/png;base64,{b64}" style="width:80px; height:100px; object-fit:contain; border:1px solid #ddd; border-radius:4px;">', unsafe_allow_html=True)
-                        if st.button("添加", key=f"add_{c[0]}", use_container_width=True):
-                            # 添加到搭配列表
-                            item_data = {
-                                "id": c[0],
-                                "category": cat,
-                                "icon": CATEGORY_ICONS[cat],
-                                "image": b64,
-                                "x": 50 + len(st.session_state.outfit_items) * 80,
-                                "y": 50,
-                                "size": 100
-                            }
-                            st.session_state.outfit_items.append(item_data)
-                            st.rerun()
+    cols = st.columns(3)
+    for i, cat in enumerate(CATEGORIES):
+        with cols[i % 3]:
+            items = clothes_by[cat]
+            if items:
+                options = ["不选"] + [f"{j+1}. {c[4] or '无关键词'}" for j, c in enumerate(items)]
+                choice = st.selectbox(f"{CATEGORY_ICONS[cat]} {cat}", options, key=f"sel_{cat}")
+                if choice != "不选":
+                    idx = int(choice.split(".")[0]) - 1
+                    st.session_state.outfit[cat] = items[idx]
+                elif cat in st.session_state.outfit:
+                    del st.session_state.outfit[cat]
 
+    # 显示搭配效果
     st.markdown("---")
+    st.markdown("### 🎨 搭配效果")
 
-    # 搭配画布
-    st.markdown("### 🎨 搭配画布（可拖拽、调整大小）")
+    if st.session_state.outfit:
+        # 图片大小控制
+        img_size = st.slider("图片大小", 100, 300, 150, key="img_size")
 
-    if st.session_state.outfit_items:
-        if st.button("🗑️ 清空全部"):
-            st.session_state.outfit_items = []
+        cols = st.columns(len(st.session_state.outfit))
+        for i, (cat, cloth) in enumerate(st.session_state.outfit.items()):
+            with cols[i]:
+                if os.path.exists(cloth[1]):
+                    # 调整图片大小
+                    img = cv2.imread(cloth[1], cv2.IMREAD_UNCHANGED)
+                    h, w = img.shape[:2]
+                    scale = img_size / max(h, w)
+                    new_w, new_h = int(w * scale), int(h * scale)
+                    resized = cv2.resize(img, (new_w, new_h))
+
+                    # 转base64显示
+                    _, buf = cv2.imencode('.png', resized)
+                    b64 = base64.b64encode(buf).decode()
+                    st.markdown(f'<div style="text-align:center;"><img src="data:image/png;base64,{b64}"></div>', unsafe_allow_html=True)
+                    st.caption(f"{CATEGORY_ICONS[cat]} {cat}")
+
+        if st.button("🗑️ 清空搭配"):
+            st.session_state.outfit = {}
             st.rerun()
-
-        # 生成拖拽界面
-        items_html = ""
-        for i, item in enumerate(st.session_state.outfit_items):
-            items_html += f'''
-            <div class="draggable" data-idx="{i}" style="position:absolute; left:{item['x']}px; top:{item['y']}px; width:{item['size']}px; cursor:move;">
-                <img src="data:image/png;base64,{item['image']}" style="width:100%; pointer-events:none;">
-                <div style="text-align:center; font-size:10px; background:#333; color:white; padding:1px 4px; border-radius:3px;">{item['icon']}</div>
-            </div>
-            '''
-
-        st.markdown(f"""
-        <div id="canvas" style="position:relative; width:100%; height:400px; background:linear-gradient(to bottom, #e8f4f8, #d4e7ed); border-radius:12px; border:2px dashed #aaa; overflow:hidden;">
-            <div style="position:absolute; top:8px; left:10px; font-size:12px; color:#666;">💡 拖拽移动衣服位置</div>
-            {items_html}
-        </div>
-        <script>
-        (function(){{
-            const canvas = document.getElementById('canvas');
-            if(!canvas) return;
-            let drag = null, offX = 0, offY = 0;
-
-            canvas.addEventListener('mousedown', e => {{
-                const el = e.target.closest('.draggable');
-                if(el) {{
-                    drag = el;
-                    const r = el.getBoundingClientRect();
-                    offX = e.clientX - r.left;
-                    offY = e.clientY - r.top;
-                    el.style.zIndex = 999;
-                }}
-            }});
-
-            document.addEventListener('mousemove', e => {{
-                if(drag){{
-                    const cr = canvas.getBoundingClientRect();
-                    let x = e.clientX - cr.left - offX;
-                    let y = e.clientY - cr.top - offY;
-                    x = Math.max(0, Math.min(x, cr.width - drag.offsetWidth));
-                    y = Math.max(0, Math.min(y, cr.height - drag.offsetHeight));
-                    drag.style.left = x + 'px';
-                    drag.style.top = y + 'px';
-                }}
-            }});
-
-            document.addEventListener('mouseup', () => {{
-                if(drag) {{ drag.style.zIndex = 1; drag = null; }}
-            }});
-        }})();
-        </script>
-        """, unsafe_allow_html=True)
-
-        # 调整大小控制
-        st.markdown("### ⚙️ 调整大小")
-        cols = st.columns(min(len(st.session_state.outfit_items), 4))
-
-        for i, item in enumerate(st.session_state.outfit_items):
-            with cols[i % 4]:
-                st.caption(f"{item['icon']} {item['category']}")
-                new_size = st.slider(f"大小", 50, 200, item['size'], key=f"size_{i}")
-                if new_size != item['size']:
-                    st.session_state.outfit_items[i]['size'] = new_size
-                    st.rerun()
-                if st.button("移除", key=f"remove_{i}"):
-                    st.session_state.outfit_items.pop(i)
-                    st.rerun()
-
     else:
-        st.info("👆 从上方选择衣服添加到搭配画布")
+        st.info("👆 请从上方选择衣服进行搭配")
