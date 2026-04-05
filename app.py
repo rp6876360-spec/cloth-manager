@@ -76,20 +76,21 @@ if page == "上传衣服":
                     if remove_bg:
                         try:
                             from rembg import remove
-                            # 转PIL再转numpy创建新数组
                             pil_img = Image.fromarray(img)
                             buf = io.BytesIO()
                             pil_img.save(buf, format='PNG')
                             buf.seek(0)
                             pil_img = Image.open(buf)
                             pil_img = remove(pil_img)
-                            # 再转回numpy
                             img = np.array(pil_img)
                         except Exception as e:
                             st.warning(f"抠图失败: {e}")
 
                     # 保存
-                    img_bgr = cv2.cvtColor(img, cv2.COLOR_RGB2BGR)
+                    if len(img.shape) == 3 and img.shape[2] == 4:
+                        img_bgr = cv2.cvtColor(img, cv2.COLOR_RGBA2BGRA)
+                    else:
+                        img_bgr = cv2.cvtColor(img, cv2.COLOR_RGB2BGR)
                     fn = f"{uuid.uuid4()}.png"
                     path = os.path.join(UPLOAD_DIR, fn)
                     cv2.imwrite(path, img_bgr)
@@ -138,55 +139,122 @@ elif page == "搭配":
 
     clothes_by = {cat: database.get_clothes_by_category(cat) for cat in CATEGORIES}
 
-    c1, c2, c3 = st.columns(3)
-    sel = {}
-    with c1:
-        t = ["不选"] + [f"{c[2]} | {c[4] or '-'}" for c in clothes_by["上装"]] if clothes_by["上装"] else []
-        sel["上装"] = st.selectbox("👕 上装", t) if t else st.warning("暂无上装")
-    with c2:
-        t = ["不选"] + [f"{c[2]} | {c[4] or '-'}" for c in clothes_by["下装"]] if clothes_by["下装"] else []
-        sel["下装"] = st.selectbox("👖 下装", t) if t else st.warning("暂无下装")
-    with c3:
-        t = ["不选"] + [f"{c[2]} | {c[4] or '-'}" for c in clothes_by["鞋子"]] if clothes_by["鞋子"] else []
-        sel["鞋子"] = st.selectbox("👟 鞋子", t) if t else st.warning("暂无鞋子")
+    # 准备所有衣服数据
+    all_clothes = []
+    for cat in CATEGORIES:
+        for c in clothes_by[cat]:
+            if os.path.exists(c[1]):
+                with open(c[1], "rb") as f:
+                    b64 = base64.b64encode(f.read()).decode()
+                all_clothes.append({
+                    "id": c[0],
+                    "category": cat,
+                    "icon": CATEGORY_ICONS[cat],
+                    "keywords": c[4] or "-",
+                    "image": b64
+                })
 
-    c4, c5, c6 = st.columns(3)
-    with c4:
-        t = ["不选"] + [f"{c[2]} | {c[4] or '-'}" for c in clothes_by["帽子"]] if clothes_by["帽子"] else []
-        sel["帽子"] = st.selectbox("🧢 帽子", t) if t else st.warning("暂无帽子")
-    with c5:
-        t = ["不选"] + [f"{c[2]} | {c[4] or '-'}" for c in clothes_by["首饰"]] if clothes_by["首饰"] else []
-        sel["首饰"] = st.selectbox("📿 首饰", t) if t else st.warning("暂无首饰")
-    with c6:
-        t = ["不选"] + [f"{c[2]} | {c[4] or '-'}" for c in clothes_by["其他配饰"]] if clothes_by["其他配饰"] else []
-        sel["其他配饰"] = st.selectbox("🎒 配饰", t) if t else st.warning("暂无配饰")
+    if not all_clothes:
+        st.info("还没有衣服，去上传页面添加吧")
+    else:
+        st.markdown("### 📋 衣服列表（点击添加到搭配区）")
 
-    has_sel = any(v and v != "不选" for v in sel.values() if v)
+        # 显示衣服列表
+        cols = st.columns(6, gap="small")
+        for i, item in enumerate(all_clothes):
+            with cols[i % 6]:
+                st.markdown(f"""
+                <div style="text-align:center; cursor:pointer; padding:5px; border:1px solid #ddd; border-radius:8px; margin-bottom:10px; background:white;">
+                    <img src="data:image/png;base64,{item['image']}" style="width:100%; max-height:80px; object-fit:contain;">
+                    <div style="font-size:12px;">{item['icon']} {item['category']}</div>
+                </div>
+                """, unsafe_allow_html=True)
+                if st.button(f"添加", key=f"add_{item['id']}"):
+                    if "outfit" not in st.session_state:
+                        st.session_state.outfit = []
+                    st.session_state.outfit.append(item)
+                    st.rerun()
 
-    if has_sel:
+        # 搭配区域
         st.markdown("---")
-        st.subheader("🎉 搭配效果")
+        st.markdown("### 🎨 搭配区域")
 
-        items = []
-        for cat, s in sel.items():
-            if s and s != "不选":
-                for c in clothes_by[cat]:
-                    if f"{c[2]} | {c[4] or '-'}" == s:
-                        items.append((CATEGORY_ICONS[cat], c, cat))
-                        break
+        if "outfit" in st.session_state and st.session_state.outfit:
+            # 清空按钮
+            if st.button("🗑️ 清空搭配"):
+                st.session_state.outfit = []
+                st.rerun()
 
-        items.sort(key=lambda x: CATEGORIES.index(x[2]) if x[2] in CATEGORIES else 999)
+            # 生成拖拽界面HTML
+            items_html = ""
+            for i, item in enumerate(st.session_state.outfit):
+                items_html += f'''
+                <div class="draggable-item" data-index="{i}" style="position:absolute; left:{50 + i * 120}px; top:50px; width:100px; cursor:move; user-select:none;">
+                    <img src="data:image/png;base64,{item['image']}" style="width:100%; pointer-events:none;">
+                    <div style="text-align:center; font-size:11px; background:rgba(0,0,0,0.6); color:white; padding:2px; border-radius:4px;">{item['icon']}</div>
+                </div>
+                '''
 
-        if items:
-            cols = st.columns(len(items))
-            for i, (ic, cl, ct) in enumerate(items):
+            st.markdown(f"""
+            <div id="canvas-container" style="position:relative; width:100%; height:400px; background:linear-gradient(135deg, #667eea 0%, #764ba2 100%); border-radius:12px; overflow:hidden;">
+                <div style="position:absolute; top:10px; left:10px; color:white; font-size:12px; opacity:0.7;">💡 拖拽衣服调整位置</div>
+                {items_html}
+            </div>
+
+            <script>
+            (function() {{
+                const container = document.getElementById('canvas-container');
+                if (!container) return;
+
+                let draggedItem = null;
+                let offsetX = 0;
+                let offsetY = 0;
+
+                container.addEventListener('mousedown', function(e) {{
+                    const item = e.target.closest('.draggable-item');
+                    if (item) {{
+                        draggedItem = item;
+                        const rect = item.getBoundingClientRect();
+                        offsetX = e.clientX - rect.left;
+                        offsetY = e.clientY - rect.top;
+                        item.style.zIndex = 1000;
+                    }}
+                }});
+
+                document.addEventListener('mousemove', function(e) {{
+                    if (draggedItem) {{
+                        const containerRect = container.getBoundingClientRect();
+                        let newX = e.clientX - containerRect.left - offsetX;
+                        let newY = e.clientY - containerRect.top - offsetY;
+
+                        // 限制在容器内
+                        newX = Math.max(0, Math.min(newX, containerRect.width - 100));
+                        newY = Math.max(0, Math.min(newY, containerRect.height - 120));
+
+                        draggedItem.style.left = newX + 'px';
+                        draggedItem.style.top = newY + 'px';
+                    }}
+                }});
+
+                document.addEventListener('mouseup', function(e) {{
+                    if (draggedItem) {{
+                        draggedItem.style.zIndex = 1;
+                        draggedItem = null;
+                    }}
+                }});
+            }})();
+            </script>
+            """, unsafe_allow_html=True)
+
+            # 显示已添加的衣服（可移除）
+            st.markdown("**已添加的衣服:**")
+            cols = st.columns(len(st.session_state.outfit))
+            for i, item in enumerate(st.session_state.outfit):
                 with cols[i]:
-                    if os.path.exists(cl[1]):
-                        with open(cl[1], "rb") as f:
-                            b64 = base64.b64encode(f.read()).decode()
-                        st.markdown(f'<img src="data:image/png;base64,{b64}" style="width:100%;">', unsafe_allow_html=True)
-                        st.caption(f"{ic} {ct}")
+                    st.caption(f"{item['icon']} {item['category']}")
+                    if st.button("移除", key=f"remove_{i}"):
+                        st.session_state.outfit.pop(i)
+                        st.rerun()
 
-        kws = [c[4] for _, c, _ in items if c[4]]
-        if kws:
-            st.write(f"**关键词**: {' + '.join(kws)}")
+        else:
+            st.info("点击上方衣服的「添加」按钮开始搭配")
