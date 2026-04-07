@@ -15,6 +15,10 @@ def init_db():
             season TEXT NOT NULL,
             category TEXT NOT NULL,
             keywords TEXT,
+            brand TEXT,
+            price REAL,
+            style TEXT,
+            color TEXT,
             created_at DATETIME DEFAULT CURRENT_TIMESTAMP
         )
     ''')
@@ -29,13 +33,13 @@ def init_db():
     conn.commit()
     conn.close()
 
-def add_cloth(image_path, season, category, keywords):
+def add_cloth(image_path, season, category, keywords, brand=None, price=None, style=None, color=None):
     """添加衣服记录"""
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
     cursor.execute(
-        "INSERT INTO clothes (image_path, season, category, keywords) VALUES (?, ?, ?, ?)",
-        (image_path, season, category, keywords)
+        "INSERT INTO clothes (image_path, season, category, keywords, brand, price, style, color) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+        (image_path, season, category, keywords, brand, price, style, color)
     )
     conn.commit()
     conn.close()
@@ -120,3 +124,39 @@ def delete_outfit(outfit_id):
     cursor.execute("DELETE FROM outfits WHERE id = ?", (outfit_id,))
     conn.commit()
     conn.close()
+
+def get_statistics():
+    """获取统计数据"""
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+
+    # 各类型数量
+    cursor.execute("SELECT category, COUNT(*) FROM clothes GROUP BY category")
+    category_stats = dict(cursor.fetchall())
+
+    # 各颜色数量
+    cursor.execute("SELECT color, COUNT(*) FROM clothes WHERE color IS NOT NULL AND color != '' GROUP BY color")
+    color_stats = dict(cursor.fetchall())
+
+    # 各风格数量
+    cursor.execute("SELECT style, COUNT(*) FROM clothes WHERE style IS NOT NULL AND style != '' GROUP BY style")
+    style_stats = dict(cursor.fetchall())
+
+    # 各季节数量
+    cursor.execute("SELECT season, COUNT(*) FROM clothes GROUP BY season")
+    season_stats = dict(cursor.fetchall())
+
+    # 总数量和总价
+    cursor.execute("SELECT COUNT(*), COALESCE(SUM(price), 0) FROM clothes")
+    total_count, total_price = cursor.fetchone()
+
+    conn.close()
+
+    return {
+        'category': category_stats,
+        'color': color_stats,
+        'style': style_stats,
+        'season': season_stats,
+        'total_count': total_count,
+        'total_price': total_price or 0
+    }

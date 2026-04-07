@@ -7,6 +7,7 @@
         <button :class="{ active: activeTab === 'upload' }" @click="activeTab = 'upload'">📤 上传</button>
         <button :class="{ active: activeTab === 'browse' }" @click="activeTab = 'browse'">👚 浏览</button>
         <button :class="{ active: activeTab === 'match' }" @click="activeTab = 'match'">✨ 搭配</button>
+        <button :class="{ active: activeTab === 'stats' }" @click="activeTab = 'stats'; loadStats()">📊 统计</button>
         <button :class="{ active: activeTab === 'outfits' }" @click="activeTab = 'outfits'; loadOutfits()">📚 搭配库</button>
       </div>
     </nav>
@@ -43,10 +44,23 @@
               </select>
             </div>
             <input v-model="form.keywords" placeholder="关键词，如：蓝色、休闲" class="keywords-input">
+
+            <div class="form-row">
+              <input v-model="form.brand" placeholder="品牌（选填）" class="half-input">
+              <input v-model="form.price" placeholder="价格（选填）" type="number" class="half-input">
+            </div>
+
             <label class="checkbox">
               <input type="checkbox" v-model="form.removeBg">
               ✂️ 自动抠图（去除背景并裁切空白）
             </label>
+
+            <div v-if="detectedInfo" class="detected-info">
+              <p>🔍 自动识别：</p>
+              <span class="auto-tag">颜色：{{ detectedInfo.color }}</span>
+              <span class="auto-tag">风格：{{ detectedInfo.style }}</span>
+            </div>
+
             <button class="save-btn" @click="saveCloth" :disabled="saving">
               {{ saving ? '处理中...' : '💾 保存' }}
             </button>
@@ -80,9 +94,19 @@
           <div v-for="cloth in filteredClothes" :key="cloth.id" class="cloth-card">
             <img :src="getImageUrl(cloth.image_path)" @error="handleImageError">
             <div class="cloth-info">
-              <span class="tag season">{{ cloth.season }}</span>
-              <span class="tag category">{{ cloth.category }}</span>
+              <div class="tags-row">
+                <span class="tag season">{{ cloth.season }}</span>
+                <span class="tag category">{{ cloth.category }}</span>
+              </div>
+              <div v-if="cloth.color || cloth.style" class="tags-row">
+                <span v-if="cloth.color" class="tag color">{{ cloth.color }}</span>
+                <span v-if="cloth.style" class="tag style">{{ cloth.style }}</span>
+              </div>
               <p v-if="cloth.keywords" class="keywords">{{ cloth.keywords }}</p>
+              <p v-if="cloth.brand || cloth.price" class="brand-price">
+                <span v-if="cloth.brand">{{ cloth.brand }}</span>
+                <span v-if="cloth.price" class="price">¥{{ cloth.price }}</span>
+              </p>
             </div>
             <button class="delete-btn" @click="deleteCloth(cloth.id)">🗑️</button>
           </div>
@@ -92,11 +116,69 @@
         </div>
       </div>
 
+      <!-- 统计页面 -->
+      <div v-if="activeTab === 'stats'" class="page">
+        <h1>📊 衣柜统计</h1>
+
+        <div class="stats-summary">
+          <div class="stat-card">
+            <div class="stat-num">{{ stats.total_count }}</div>
+            <div class="stat-label">总数量</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-num">¥{{ stats.total_price || 0 }}</div>
+            <div class="stat-label">总价值</div>
+          </div>
+        </div>
+
+        <div class="stats-grid">
+          <div class="chart-card">
+            <h3>📂 类型分布</h3>
+            <div class="bar-chart">
+              <div v-for="(count, cat) in stats.category" :key="cat" class="bar-row">
+                <span class="bar-label">{{ cat }}</span>
+                <div class="bar-wrap">
+                  <div class="bar" :style="{ width: getBarWidth(count, stats.total_count) }"></div>
+                  <span class="bar-num">{{ count }}</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="chart-card">
+            <h3>🎨 颜色分布</h3>
+            <div class="color-grid">
+              <div v-for="(count, color) in stats.color" :key="color" class="color-item">
+                <span class="color-dot" :class="getColorClass(color)"></span>
+                <span>{{ color }}</span>
+                <span class="color-count">{{ count }}</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="chart-card">
+            <h3>👔 风格分布</h3>
+            <div class="style-list">
+              <div v-for="(count, style) in stats.style" :key="style" class="style-item">
+                <span>{{ style }}</span>
+                <span class="style-count">{{ count }}件</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="chart-card suggestions-card">
+            <h3>💡 购物建议</h3>
+            <ul class="suggestions-list">
+              <li v-for="(s, i) in stats.suggestions" :key="i">{{ s }}</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+
       <!-- 搭配页面 -->
       <div v-if="activeTab === 'match'" class="page">
         <h1>✨ 搭配</h1>
         <div class="match-layout">
-          <!-- 左侧：衣服列表 -->
           <div class="cloth-list-panel">
             <h3>📋 选择衣服</h3>
             <div v-for="cat in categories" :key="cat.value" class="category-section">
@@ -113,17 +195,15 @@
             </div>
           </div>
 
-          <!-- 右侧：搭配画布 -->
           <div class="outfit-panel">
             <div class="outfit-header">
               <h3>🎨 搭配画布</h3>
               <div class="header-btns">
-                <button @click="showSaveDialog = true" class="save-outfit-btn" :disabled="outfit.length === 0">💾 保存搭配</button>
+                <button @click="showSaveDialog = true" class="save-outfit-btn" :disabled="outfit.length === 0">💾 保存</button>
                 <button @click="clearOutfit" class="clear-btn">🗑️ 清空</button>
               </div>
             </div>
 
-            <!-- 选中图片的控制面板 -->
             <div v-if="selectedItemIndex >= 0 && outfit[selectedItemIndex]" class="item-controls">
               <div class="control-row">
                 <label>大小: {{ outfit[selectedItemIndex].size }}px</label>
@@ -207,31 +287,30 @@ import axios from 'axios'
 
 const API_URL = 'http://localhost:5000'
 
-// 状态
 const activeTab = ref('upload')
 const clothes = ref([])
 const saving = ref(false)
 const showSaveDialog = ref(false)
 const outfitName = ref('')
+const detectedInfo = ref(null)
 
-// 上传相关
 const fileInput = ref(null)
 const previewImage = ref(null)
 const form = reactive({
   season: '',
   category: '',
   keywords: '',
-  removeBg: false
+  removeBg: false,
+  brand: '',
+  price: ''
 })
 
-// 浏览筛选
 const filter = reactive({
   season: '',
   category: '',
   keyword: ''
 })
 
-// 搭配相关
 const outfit = ref([])
 const selectedItemIndex = ref(-1)
 const expandedCategories = ref(['上装', '下装'])
@@ -239,8 +318,8 @@ const isDragging = ref(false)
 const dragIndex = ref(-1)
 const dragOffset = reactive({ x: 0, y: 0 })
 
-// 搭配库
 const savedOutfits = ref([])
+const stats = ref({ category: {}, color: {}, style: {}, season: {}, total_count: 0, total_price: 0, suggestions: [] })
 
 const categories = [
   { value: '上装', label: '上装', icon: '👕' },
@@ -251,7 +330,6 @@ const categories = [
   { value: '其他配饰', label: '其他配饰', icon: '🎒' }
 ]
 
-// 加载衣服列表
 const loadClothes = async () => {
   try {
     const res = await axios.get(`${API_URL}/api/clothes`)
@@ -261,7 +339,6 @@ const loadClothes = async () => {
   }
 }
 
-// 加载搭配库
 const loadOutfits = async () => {
   try {
     const res = await axios.get(`${API_URL}/api/outfits`)
@@ -271,9 +348,17 @@ const loadOutfits = async () => {
   }
 }
 
+const loadStats = async () => {
+  try {
+    const res = await axios.get(`${API_URL}/api/statistics`)
+    stats.value = res.data
+  } catch (e) {
+    console.error('加载统计失败', e)
+  }
+}
+
 onMounted(loadClothes)
 
-// 筛选后的衣服
 const filteredClothes = computed(() => {
   return clothes.value.filter(c => {
     if (filter.season && c.season !== filter.season) return false
@@ -283,7 +368,6 @@ const filteredClothes = computed(() => {
   })
 })
 
-// 获取图片URL
 const getImageUrl = (path) => {
   if (!path) return ''
   return `${API_URL}/api/image/${encodeURIComponent(path)}`
@@ -293,7 +377,6 @@ const handleImageError = (e) => {
   e.target.src = 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><text y="50" x="50" text-anchor="middle">📷</text></svg>'
 }
 
-// 上传处理
 const triggerUpload = () => fileInput.value?.click()
 
 const handleFileSelect = (e) => {
@@ -328,8 +411,11 @@ const saveCloth = async () => {
     formData.append('category', form.category)
     formData.append('keywords', form.keywords)
     formData.append('remove_bg', form.removeBg)
+    formData.append('brand', form.brand)
+    formData.append('price', form.price)
 
-    await axios.post(`${API_URL}/api/upload`, formData)
+    const res = await axios.post(`${API_URL}/api/upload`, formData)
+    detectedInfo.value = { color: res.data.color, style: res.data.style }
     alert('保存成功！')
 
     previewImage.value = null
@@ -337,6 +423,8 @@ const saveCloth = async () => {
     form.category = ''
     form.keywords = ''
     form.removeBg = false
+    form.brand = ''
+    form.price = ''
     loadClothes()
   } catch (e) {
     alert('保存失败: ' + e.message)
@@ -345,7 +433,6 @@ const saveCloth = async () => {
   }
 }
 
-// 删除衣服
 const deleteCloth = async (id) => {
   if (confirm('确定删除？')) {
     await axios.delete(`${API_URL}/api/clothes/${id}`)
@@ -353,7 +440,6 @@ const deleteCloth = async (id) => {
   }
 }
 
-// 搭配相关
 const getClothesByCategory = (cat) => {
   return clothes.value.filter(c => c.category === cat)
 }
@@ -369,14 +455,11 @@ const toggleCategory = (cat) => {
 
 const addToOutfit = (cloth) => {
   const canvas = document.querySelector('.outfit-canvas')
-  let startX = 20
-  let startY = 20
-
+  let startX = 20, startY = 20
   if (canvas) {
     startX = Math.random() * (canvas.offsetWidth - 150) + 20
     startY = Math.random() * (canvas.offsetHeight - 150) + 20
   }
-
   outfit.value.push({
     clothId: cloth.id,
     category: cloth.category,
@@ -395,9 +478,7 @@ const selectItem = (index) => {
 
 const removeFromOutfit = (index) => {
   outfit.value.splice(index, 1)
-  if (selectedItemIndex.value === index) {
-    selectedItemIndex.value = -1
-  }
+  if (selectedItemIndex.value === index) selectedItemIndex.value = -1
 }
 
 const clearOutfit = () => {
@@ -405,29 +486,22 @@ const clearOutfit = () => {
   selectedItemIndex.value = -1
 }
 
-// 拖拽
 const canvasRef = ref(null)
 
 const startDrag = (e, index) => {
   e.preventDefault()
   e.stopPropagation()
-
   isDragging.value = true
   dragIndex.value = index
   selectedItemIndex.value = index
 
   const canvas = document.querySelector('.outfit-canvas')
   const rect = canvas.getBoundingClientRect()
-
   const clientX = e.touches ? e.touches[0].clientX : e.clientX
   const clientY = e.touches ? e.touches[0].clientY : e.clientY
 
-  const mouseX = clientX - rect.left
-  const mouseY = clientY - rect.top
-
-  dragOffset.x = mouseX - outfit.value[index].x
-  dragOffset.y = mouseY - outfit.value[index].y
-
+  dragOffset.x = clientX - rect.left - outfit.value[index].x
+  dragOffset.y = clientY - rect.top - outfit.value[index].y
   outfit.value[index].zIndex = 100
 
   document.addEventListener('mousemove', onDrag)
@@ -442,7 +516,6 @@ const onDrag = (e) => {
 
   const clientX = e.touches ? e.touches[0].clientX : e.clientX
   const clientY = e.touches ? e.touches[0].clientY : e.clientY
-
   const canvas = document.querySelector('.outfit-canvas')
   if (!canvas) return
 
@@ -451,7 +524,6 @@ const onDrag = (e) => {
 
   let x = clientX - rect.left - dragOffset.x
   let y = clientY - rect.top - dragOffset.y
-
   x = Math.max(0, Math.min(x, rect.width - item.size))
   y = Math.max(0, Math.min(y, rect.height - item.size - 20))
 
@@ -471,17 +543,13 @@ const stopDrag = () => {
   document.removeEventListener('touchend', stopDrag)
 }
 
-// 保存搭配
 const saveOutfit = async () => {
   if (!outfitName.value.trim()) {
     alert('请输入搭配名称')
     return
   }
   try {
-    await axios.post(`${API_URL}/api/outfits`, {
-      name: outfitName.value,
-      items: outfit.value
-    })
+    await axios.post(`${API_URL}/api/outfits`, { name: outfitName.value, items: outfit.value })
     alert('保存成功！')
     showSaveDialog.value = false
     outfitName.value = ''
@@ -490,13 +558,11 @@ const saveOutfit = async () => {
   }
 }
 
-// 加载搭配
 const loadOutfit = (saved) => {
   outfit.value = parseItems(saved.items)
   activeTab.value = 'match'
 }
 
-// 删除搭配
 const deleteOutfit = async (id) => {
   if (confirm('确定删除？')) {
     await axios.delete(`${API_URL}/api/outfits/${id}`)
@@ -504,31 +570,29 @@ const deleteOutfit = async (id) => {
   }
 }
 
-// 解析items JSON
 const parseItems = (itemsStr) => {
-  try {
-    return JSON.parse(itemsStr) || []
-  } catch {
-    return []
+  try { return JSON.parse(itemsStr) || [] } catch { return [] }
+}
+
+const getBarWidth = (count, total) => {
+  if (!total) return '0%'
+  return Math.max(10, (count / total) * 100) + '%'
+}
+
+const getColorClass = (color) => {
+  const map = {
+    '白色': 'white', '黑色': 'black', '红色': 'red', '绿色': 'green',
+    '蓝色': 'blue', '黄色': 'yellow', '紫色': 'purple', '粉色': 'pink',
+    '橙色': 'orange', '棕色': 'brown', '灰色': 'gray'
   }
+  return map[color] || 'default'
 }
 </script>
 
 <style>
-* {
-  margin: 0;
-  padding: 0;
-  box-sizing: border-box;
-}
-
-body {
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-  background: #f5f5f5;
-}
-
-.app {
-  min-height: 100vh;
-}
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #f5f5f5; }
+.app { min-height: 100vh; }
 
 .navbar {
   background: #1a1a1a;
@@ -541,46 +605,21 @@ body {
   top: 0;
   z-index: 100;
 }
-
-.logo {
-  font-size: 18px;
-  font-weight: bold;
-}
-
-.nav-tabs {
-  display: flex;
-}
-
+.logo { font-size: 18px; font-weight: bold; }
+.nav-tabs { display: flex; }
 .nav-tabs button {
   background: transparent;
   border: none;
   color: #aaa;
-  padding: 16px 16px;
+  padding: 16px 14px;
   cursor: pointer;
-  font-size: 14px;
-  transition: all 0.2s;
+  font-size: 13px;
 }
+.nav-tabs button:hover { color: white; }
+.nav-tabs button.active { color: white; background: #333; }
 
-.nav-tabs button:hover {
-  color: white;
-}
-
-.nav-tabs button.active {
-  color: white;
-  background: #333;
-}
-
-.main-content {
-  padding: 20px;
-  max-width: 1200px;
-  margin: 0 auto;
-}
-
-.page h1 {
-  font-size: 24px;
-  margin-bottom: 20px;
-  color: #1a1a1a;
-}
+.main-content { padding: 20px; max-width: 1400px; margin: 0 auto; }
+.page h1 { font-size: 24px; margin-bottom: 20px; color: #1a1a1a; }
 
 .upload-card {
   background: white;
@@ -590,7 +629,6 @@ body {
   margin: 0 auto;
   box-shadow: 0 2px 8px rgba(0,0,0,0.1);
 }
-
 .upload-area {
   border: 2px dashed #ddd;
   border-radius: 8px;
@@ -602,51 +640,23 @@ body {
   align-items: center;
   justify-content: center;
 }
+.upload-placeholder { color: #999; }
+.upload-placeholder .icon { font-size: 48px; }
+.preview-img { max-width: 100%; max-height: 300px; border-radius: 8px; }
 
-.upload-placeholder {
-  color: #999;
-}
-
-.upload-placeholder .icon {
-  font-size: 48px;
-}
-
-.preview-img {
-  max-width: 100%;
-  max-height: 300px;
-  border-radius: 8px;
-}
-
-.form {
-  margin-top: 20px;
-}
-
-.form-row {
-  display: flex;
-  gap: 10px;
-}
-
-.form select, .form input {
+.form { margin-top: 20px; }
+.form-row { display: flex; gap: 10px; margin-bottom: 10px; }
+.form select, .form input, .keywords-input {
   flex: 1;
   padding: 10px;
   border: 1px solid #ddd;
   border-radius: 6px;
   font-size: 14px;
 }
+.keywords-input { width: 100%; margin-top: 0; }
+.half-input { flex: 1; }
 
-.keywords-input {
-  width: 100%;
-  margin-top: 10px;
-}
-
-.checkbox {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin: 16px 0;
-  cursor: pointer;
-}
-
+.checkbox { display: flex; align-items: center; gap: 8px; margin: 16px 0; cursor: pointer; }
 .save-btn {
   width: 100%;
   padding: 12px;
@@ -657,43 +667,41 @@ body {
   font-size: 16px;
   cursor: pointer;
 }
+.save-btn:hover { background: #333; }
+.save-btn:disabled { opacity: 0.6; }
 
-.save-btn:hover {
-  background: #333;
+.detected-info {
+  background: #f0f9ff;
+  border-radius: 8px;
+  padding: 12px;
+  margin: 12px 0;
+}
+.detected-info p { font-size: 13px; color: #666; margin-bottom: 8px; }
+.auto-tag {
+  display: inline-block;
+  background: #1a1a1a;
+  color: white;
+  padding: 4px 10px;
+  border-radius: 4px;
+  font-size: 12px;
+  margin-right: 8px;
 }
 
-.save-btn:disabled {
-  opacity: 0.6;
-}
-
-.filters {
-  display: flex;
-  gap: 10px;
-  margin-bottom: 20px;
-}
-
+.filters { display: flex; gap: 10px; margin-bottom: 20px; }
 .filters select, .filters input {
   padding: 8px 12px;
   border: 1px solid #ddd;
   border-radius: 6px;
   font-size: 14px;
 }
-
-.filters input {
-  flex: 1;
-}
-
-.count {
-  color: #666;
-  margin-bottom: 16px;
-}
+.filters input { flex: 1; }
+.count { color: #666; margin-bottom: 16px; }
 
 .cloth-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
   gap: 16px;
 }
-
 .cloth-card {
   background: white;
   border-radius: 8px;
@@ -701,17 +709,9 @@ body {
   position: relative;
   box-shadow: 0 2px 8px rgba(0,0,0,0.1);
 }
-
-.cloth-card img {
-  width: 100%;
-  aspect-ratio: 3/4;
-  object-fit: cover;
-}
-
-.cloth-info {
-  padding: 8px;
-}
-
+.cloth-card img { width: 100%; aspect-ratio: 3/4; object-fit: cover; }
+.cloth-info { padding: 10px; }
+.tags-row { margin-bottom: 4px; }
 .tag {
   display: inline-block;
   padding: 2px 8px;
@@ -719,23 +719,19 @@ body {
   font-size: 11px;
   margin-right: 4px;
 }
-
-.tag.season {
-  background: #e8f4f8;
-  color: #333;
-}
-
-.tag.category {
-  background: #f5f5f5;
-  color: #666;
-}
-
-.keywords {
-  font-size: 12px;
-  color: #666;
+.tag.season { background: #e8f4f8; color: #333; }
+.tag.category { background: #f5f5f5; color: #666; }
+.tag.color { background: #fff3cd; color: #856404; }
+.tag.style { background: #d4edda; color: #155724; }
+.keywords { font-size: 12px; color: #666; margin-top: 4px; }
+.brand-price {
+  font-size: 11px;
+  color: #888;
   margin-top: 4px;
+  display: flex;
+  justify-content: space-between;
 }
-
+.price { color: #e74c3c; font-weight: bold; }
 .delete-btn {
   position: absolute;
   top: 8px;
@@ -743,46 +739,101 @@ body {
   background: rgba(0,0,0,0.5);
   border: none;
   border-radius: 50%;
-  width: 32px;
-  height: 32px;
+  width: 28px;
+  height: 28px;
   cursor: pointer;
   opacity: 0;
-  transition: opacity 0.2s;
 }
+.cloth-card:hover .delete-btn { opacity: 1; }
+.empty { text-align: center; padding: 60px; color: #999; }
 
-.cloth-card:hover .delete-btn {
-  opacity: 1;
-}
-
-.empty {
+/* 统计页面 */
+.stats-summary { display: flex; gap: 20px; margin-bottom: 24px; }
+.stat-card {
+  background: white;
+  border-radius: 12px;
+  padding: 24px;
   text-align: center;
-  padding: 60px;
-  color: #999;
+  flex: 1;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.1);
 }
+.stat-num { font-size: 32px; font-weight: bold; color: #1a1a1a; }
+.stat-label { color: #666; margin-top: 4px; }
 
-.match-layout {
+.stats-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 20px; }
+.chart-card {
+  background: white;
+  border-radius: 12px;
+  padding: 20px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+}
+.chart-card h3 { font-size: 16px; margin-bottom: 16px; }
+
+.bar-chart { }
+.bar-row { display: flex; align-items: center; margin-bottom: 8px; }
+.bar-label { width: 80px; font-size: 13px; }
+.bar-wrap { flex: 1; display: flex; align-items: center; }
+.bar {
+  height: 20px;
+  background: linear-gradient(90deg, #667eea 0%, #764ba2 100%);
+  border-radius: 4px;
+  min-width: 20px;
+}
+.bar-num { margin-left: 8px; font-size: 12px; color: #666; }
+
+.color-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; }
+.color-item { display: flex; align-items: center; gap: 8px; font-size: 13px; }
+.color-dot {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  border: 1px solid #ddd;
+}
+.color-dot.white { background: white; }
+.color-dot.black { background: #1a1a1a; }
+.color-dot.red { background: #e74c3c; }
+.color-dot.green { background: #27ae60; }
+.color-dot.blue { background: #3498db; }
+.color-dot.yellow { background: #f1c40f; }
+.color-dot.purple { background: #9b59b6; }
+.color-dot.pink { background: #e91e63; }
+.color-dot.orange { background: #e67e22; }
+.color-dot.brown { background: #8d6e63; }
+.color-dot.gray { background: #9e9e9e; }
+.color-dot.default { background: #ccc; }
+.color-count { margin-left: auto; color: #666; }
+
+.style-list { }
+.style-item {
   display: flex;
-  gap: 20px;
-  height: calc(100vh - 180px);
+  justify-content: space-between;
+  padding: 8px 0;
+  border-bottom: 1px solid #eee;
+  font-size: 14px;
+}
+.style-count { color: #666; }
+
+.suggestions-card { }
+.suggestions-list { list-style: none; }
+.suggestions-list li {
+  padding: 10px;
+  background: #f8f9fa;
+  border-radius: 6px;
+  margin-bottom: 8px;
+  font-size: 14px;
 }
 
+/* 搭配页面 */
+.match-layout { display: flex; gap: 20px; height: calc(100vh - 180px); }
 .cloth-list-panel {
-  width: 250px;
+  width: 220px;
   background: white;
   border-radius: 12px;
   padding: 16px;
   overflow-y: auto;
 }
-
-.cloth-list-panel h3 {
-  font-size: 16px;
-  margin-bottom: 12px;
-}
-
-.category-section {
-  margin-bottom: 12px;
-}
-
+.cloth-list-panel h3 { font-size: 15px; margin-bottom: 12px; }
+.category-section { margin-bottom: 10px; }
 .category-header {
   display: flex;
   justify-content: space-between;
@@ -790,34 +841,19 @@ body {
   background: #f5f5f5;
   border-radius: 6px;
   cursor: pointer;
-  font-size: 14px;
+  font-size: 13px;
 }
-
-.category-items {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  padding: 8px 0;
-}
-
+.category-items { display: flex; flex-wrap: wrap; gap: 6px; padding: 8px 0; }
 .mini-cloth {
-  width: 50px;
-  height: 50px;
+  width: 45px;
+  height: 45px;
   border-radius: 6px;
   overflow: hidden;
   cursor: pointer;
   border: 2px solid transparent;
 }
-
-.mini-cloth:hover {
-  border-color: #1a1a1a;
-}
-
-.mini-cloth img {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-}
+.mini-cloth:hover { border-color: #1a1a1a; }
+.mini-cloth img { width: 100%; height: 100%; object-fit: cover; }
 
 .outfit-panel {
   flex: 1;
@@ -827,19 +863,8 @@ body {
   display: flex;
   flex-direction: column;
 }
-
-.outfit-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 12px;
-}
-
-.header-btns {
-  display: flex;
-  gap: 8px;
-}
-
+.outfit-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
+.header-btns { display: flex; gap: 8px; }
 .save-outfit-btn {
   padding: 6px 12px;
   background: #1a1a1a;
@@ -848,11 +873,7 @@ body {
   border-radius: 6px;
   cursor: pointer;
 }
-
-.save-outfit-btn:disabled {
-  opacity: 0.5;
-}
-
+.save-outfit-btn:disabled { opacity: 0.5; }
 .clear-btn {
   padding: 6px 12px;
   background: #f5f5f5;
@@ -869,22 +890,9 @@ body {
   border-radius: 8px;
   margin-bottom: 12px;
 }
-
-.control-row {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  flex: 1;
-}
-
-.control-row label {
-  font-size: 13px;
-  min-width: 100px;
-}
-
-.control-row input[type="range"] {
-  flex: 1;
-}
+.control-row { display: flex; align-items: center; gap: 10px; flex: 1; }
+.control-row label { font-size: 13px; min-width: 100px; }
+.control-row input[type="range"] { flex: 1; }
 
 .outfit-canvas {
   flex: 1;
@@ -893,25 +901,14 @@ body {
   position: relative;
   overflow: hidden;
 }
-
 .outfit-item {
   position: absolute;
   cursor: move;
   user-select: none;
   transition: box-shadow 0.2s;
 }
-
-.outfit-item.selected {
-  box-shadow: 0 0 0 3px #1a1a1a;
-  border-radius: 8px;
-}
-
-.outfit-item img {
-  width: 100%;
-  border-radius: 8px;
-  box-shadow: 0 2px 8px rgba(0,0,0,0.2);
-}
-
+.outfit-item.selected { box-shadow: 0 0 0 3px #1a1a1a; border-radius: 8px; }
+.outfit-item img { width: 100%; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.2); }
 .item-label {
   display: block;
   text-align: center;
@@ -922,7 +919,6 @@ body {
   border-radius: 0 0 8px 8px;
   margin-top: -4px;
 }
-
 .remove-item {
   position: absolute;
   top: -8px;
@@ -935,9 +931,7 @@ body {
   border-radius: 50%;
   cursor: pointer;
   font-size: 16px;
-  line-height: 1;
 }
-
 .canvas-hint {
   position: absolute;
   top: 50%;
@@ -951,50 +945,27 @@ body {
 /* 搭配库 */
 .outfits-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
   gap: 16px;
 }
-
 .outfit-card {
   background: white;
   border-radius: 12px;
   overflow: hidden;
   box-shadow: 0 2px 8px rgba(0,0,0,0.1);
 }
-
 .outfit-preview {
   display: flex;
   gap: 4px;
   padding: 8px;
   background: #f5f5f5;
-  height: 120px;
+  height: 100px;
 }
-
-.preview-item {
-  flex: 1;
-  object-fit: cover;
-  border-radius: 6px;
-}
-
-.outfit-info {
-  padding: 12px;
-}
-
-.outfit-info h4 {
-  font-size: 14px;
-  margin-bottom: 4px;
-}
-
-.outfit-info p {
-  font-size: 12px;
-  color: #666;
-}
-
-.outfit-actions {
-  display: flex;
-  border-top: 1px solid #eee;
-}
-
+.preview-item { flex: 1; object-fit: cover; border-radius: 6px; }
+.outfit-info { padding: 12px; }
+.outfit-info h4 { font-size: 14px; margin-bottom: 4px; }
+.outfit-info p { font-size: 12px; color: #666; }
+.outfit-actions { display: flex; border-top: 1px solid #eee; }
 .outfit-actions button {
   flex: 1;
   padding: 10px;
@@ -1003,14 +974,8 @@ body {
   cursor: pointer;
   font-size: 13px;
 }
-
-.outfit-actions button:first-child {
-  border-right: 1px solid #eee;
-}
-
-.outfit-actions button.delete {
-  color: #ff4444;
-}
+.outfit-actions button:first-child { border-right: 1px solid #eee; }
+.outfit-actions button.delete { color: #ff4444; }
 
 /* 弹窗 */
 .modal-overlay {
@@ -1025,18 +990,13 @@ body {
   justify-content: center;
   z-index: 1000;
 }
-
 .modal {
   background: white;
   border-radius: 12px;
   padding: 24px;
   width: 300px;
 }
-
-.modal h3 {
-  margin-bottom: 16px;
-}
-
+.modal h3 { margin-bottom: 16px; }
 .modal-input {
   width: 100%;
   padding: 10px;
@@ -1044,22 +1004,7 @@ body {
   border-radius: 6px;
   margin-bottom: 16px;
 }
-
-.modal-btns {
-  display: flex;
-  gap: 10px;
-}
-
-.modal-btns button {
-  flex: 1;
-  padding: 10px;
-  border: none;
-  border-radius: 6px;
-  cursor: pointer;
-}
-
-.modal-btns button.primary {
-  background: #1a1a1a;
-  color: white;
-}
+.modal-btns { display: flex; gap: 10px; }
+.modal-btns button { flex: 1; padding: 10px; border: none; border-radius: 6px; cursor: pointer; }
+.modal-btns button.primary { background: #1a1a1a; color: white; }
 </style>
