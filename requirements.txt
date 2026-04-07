@@ -3,3 +3,5 @@ Pillow
 rembg
 opencv-python-headless
 numpy
+flask
+flask-cors

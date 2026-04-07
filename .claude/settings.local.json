@@ -4,7 +4,12 @@
       "Bash(pip install:*)",
       "Bash(streamlit run:*)",
       "Bash(git config:*)",
-      "Bash(gh:*)"
+      "Bash(gh:*)",
+      "Bash(pip uninstall:*)",
+      "Bash(netstat -ano)",
+      "Bash(findstr :8503)",
+      "Bash(npm create:*)",
+      "Bash(npm install:*)"
     ]
   }
 }
