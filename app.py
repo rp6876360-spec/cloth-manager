@@ -62,15 +62,12 @@ if page == "上传衣服":
         remove_bg = st.checkbox("✂️ 自动抠图")
 
         if st.button("💾 保存"):
-            with st.spinner("处理中，请稍候..."):
+            with st.spinner("处理中..."):
                 bytes_data = uploaded.getvalue()
-
-                # 用OpenCV读取
                 nparr = np.frombuffer(bytes_data, np.uint8)
                 img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
                 img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
 
-                # 抠图
                 if remove_bg:
                     try:
                         from rembg import remove
@@ -84,15 +81,14 @@ if page == "上传衣服":
                     except Exception as e:
                         st.error(f"抠图失败: {e}")
 
-                # 保存
                 if len(img.shape) == 3 and img.shape[2] == 4:
                     img_bgr = cv2.cvtColor(img, cv2.COLOR_RGBA2BGRA)
                 else:
                     img_bgr = cv2.cvtColor(img, cv2.COLOR_RGB2BGR)
+
                 fn = f"{uuid.uuid4()}.png"
                 path = os.path.join(UPLOAD_DIR, fn)
                 cv2.imwrite(path, img_bgr)
-
                 database.add_cloth(path, s, cat, kw)
                 st.success("保存成功!")
 
@@ -134,131 +130,43 @@ elif page == "搭配":
 
     clothes_by = {cat: database.get_clothes_by_category(cat) for cat in CATEGORIES}
 
-    # 初始化
-    if "outfit_items" not in st.session_state:
-        st.session_state.outfit_items = []
+    # 统一大小滑块
+    img_size = st.slider("统一调整大小", 80, 250, 150)
 
-    # 获取所有衣服的图片base64
-    def get_image_b64(path):
-        if os.path.exists(path):
-            with open(path, "rb") as f:
-                return base64.b64encode(f.read()).decode()
-        return None
-
-    # 添加衣服到搭配
-    st.markdown("### 📋 添加衣服到搭配")
-
-    # 分成两行显示
-    row1 = ["上装", "下装", "鞋子"]
-    row2 = ["帽子", "首饰", "其他配饰"]
-
-    for row_cats in [row1, row2]:
-        cols = st.columns(3)
-        for j, cat in enumerate(row_cats):
-            with cols[j]:
-                items = clothes_by[cat]
-                if items:
-                    options = ["选择..."] + [f"{c[4] or '无关键词'}" for c in items]
-                    choice = st.selectbox(f"{CATEGORY_ICONS[cat]} {cat}", options, key=f"add_{cat}")
-                    if choice != "选择...":
-                        idx = options.index(choice) - 1
-                        cloth = items[idx]
-                        b64 = get_image_b64(cloth[1])
-                        if b64:
-                            # 检查是否已添加
-                            existing = [i for i, x in enumerate(st.session_state.outfit_items) if x["cloth_id"] == cloth[0]]
-                            if not existing:
-                                st.session_state.outfit_items.append({
-                                    "cloth_id": cloth[0],
-                                    "category": cat,
-                                    "icon": CATEGORY_ICONS[cat],
-                                    "image": b64,
-                                    "x": 30 + len(st.session_state.outfit_items) * 50,
-                                    "y": 30 + len(st.session_state.outfit_items) * 30,
-                                    "width": 80
-                                })
-                                st.success(f"已添加 {cat}")
-
-    # 显示搭配画布
     st.markdown("---")
-    st.markdown("### 🎨 搭配画布（拖拽移动，滑块调整大小）")
 
-    if st.session_state.outfit_items:
-        if st.button("🗑️ 清空全部"):
-            st.session_state.outfit_items = []
-            st.rerun()
+    # 选择衣服
+    cols = st.columns(3)
+    selections = {}
 
-        # 滑块调整大小
-        st.markdown("**调整大小**")
-        cols = st.columns(min(len(st.session_state.outfit_items), 6))
-        for i, item in enumerate(st.session_state.outfit_items):
-            with cols[i % 6]:
-                new_width = st.slider(f"{item['icon']}", 40, 150, item["width"], key=f"w_{item['cloth_id']}")
-                if new_width != item["width"]:
-                    st.session_state.outfit_items[i]["width"] = new_width
+    for i, cat in enumerate(CATEGORIES):
+        with cols[i % 3]:
+            items = clothes_by[cat]
+            if items:
+                options = ["不选"] + [f"{c[4] or '无'}" for c in items]
+                choice = st.selectbox(f"{CATEGORY_ICONS[cat]} {cat}", options, key=f"sel_{cat}")
+                if choice != "不选":
+                    idx = options.index(choice) - 1
+                    selections[cat] = items[idx]
 
-        # 拖拽画布
-        items_html = ""
-        for i, item in enumerate(st.session_state.outfit_items):
-            items_html += f'''
-            <div class="item" id="item_{i}" style="position:absolute; left:{item['x']}px; top:{item['y']}px; width:{item['width']}px; cursor:move; user-select:none;">
-                <img src="data:image/png;base64,{item['image']}" style="width:100%; pointer-events:none; border:1px solid #ddd; border-radius:4px;">
-            </div>
-            '''
+    # 显示搭配
+    st.markdown("---")
+    st.subheader("搭配效果")
 
-        st.markdown(f"""
-        <div id="canvas" style="position:relative; width:100%; height:350px; background:linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%); border-radius:12px; border:2px solid #ccc; overflow:hidden;">
-            {items_html}
-        </div>
-        <script>
-        (function(){{
-            const canvas = document.getElementById('canvas');
-            let drag = null, startX, startY, startLeft, startTop;
-
-            canvas.addEventListener('mousedown', function(e) {{
-                const item = e.target.closest('.item');
-                if(item) {{
-                    drag = item;
-                    const rect = item.getBoundingClientRect();
-                    startX = e.clientX;
-                    startY = e.clientY;
-                    startLeft = item.offsetLeft;
-                    startTop = item.offsetTop;
-                    item.style.zIndex = 100;
-                }}
-            }});
-
-            document.addEventListener('mousemove', function(e) {{
-                if(drag) {{
-                    const dx = e.clientX - startX;
-                    const dy = e.clientY - startY;
-                    let newLeft = startLeft + dx;
-                    let newTop = startTop + dy;
-                    newLeft = Math.max(0, Math.min(newLeft, canvas.offsetWidth - drag.offsetWidth));
-                    newTop = Math.max(0, Math.min(newTop, canvas.offsetHeight - drag.offsetHeight));
-                    drag.style.left = newLeft + 'px';
-                    drag.style.top = newTop + 'px';
-                }}
-            }});
-
-            document.addEventListener('mouseup', function(e) {{
-                if(drag) {{
-                    drag.style.zIndex = '';
-                    drag = null;
-                }}
-            }});
-        }})();
-        </script>
-        """, unsafe_allow_html=True)
-
-        # 移除按钮
-        st.markdown("**移除衣服**")
-        cols = st.columns(min(len(st.session_state.outfit_items), 6))
-        for i, item in enumerate(st.session_state.outfit_items):
-            with cols[i % 6]:
-                if st.button(f"移除 {item['icon']}", key=f"rm_{item['cloth_id']}"):
-                    st.session_state.outfit_items.pop(i)
-                    st.rerun()
-
+    if selections:
+        cols = st.columns(len(selections))
+        for i, (cat, cloth) in enumerate(selections.items()):
+            with cols[i]:
+                if os.path.exists(cloth[1]):
+                    # 调整大小
+                    img = cv2.imread(cloth[1], cv2.IMREAD_UNCHANGED)
+                    h, w = img.shape[:2]
+                    scale = img_size / max(h, w)
+                    new_w, new_h = int(w * scale), int(h * scale)
+                    resized = cv2.resize(img, (new_w, new_h))
+                    _, buf = cv2.imencode('.png', resized)
+                    b64 = base64.b64encode(buf).decode()
+                    st.markdown(f'<img src="data:image/png;base64,{b64}" style="display:block; margin:0 auto;">', unsafe_allow_html=True)
+                    st.caption(f"{CATEGORY_ICONS[cat]} {cat}")
     else:
-        st.info("从上方选择衣服添加到搭配画布")
+        st.info("从上方选择衣服进行搭配")
