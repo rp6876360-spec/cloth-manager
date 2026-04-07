@@ -9,7 +9,10 @@
       "Bash(netstat -ano)",
       "Bash(findstr :8503)",
       "Bash(npm create:*)",
-      "Bash(npm install:*)"
+      "Bash(npm install:*)",
+      "Bash(npm run:*)",
+      "Bash(python app.py)",
+      "Bash(python api.py)"
     ]
   }
 }

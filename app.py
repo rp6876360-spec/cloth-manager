@@ -132,9 +132,8 @@ if __name__ == '__main__':
     flask_thread.start()
 
     print("=" * 50)
-    print("🚀 服务已启动:")
-    print("   API: http://localhost:8501")
-    print("   前端: cd frontend && npm run dev")
+    print("API running: http://localhost:8501")
+    print("Frontend: cd frontend && npm run dev")
     print("=" * 50)
 
     # 运行Streamlit

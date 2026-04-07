@@ -7,6 +7,7 @@
         <button :class="{ active: activeTab === 'upload' }" @click="activeTab = 'upload'">📤 上传</button>
         <button :class="{ active: activeTab === 'browse' }" @click="activeTab = 'browse'">👚 浏览</button>
         <button :class="{ active: activeTab === 'match' }" @click="activeTab = 'match'">✨ 搭配</button>
+        <button :class="{ active: activeTab === 'outfits' }" @click="activeTab = 'outfits'; loadOutfits()">📚 搭配库</button>
       </div>
     </nav>
 
@@ -14,7 +15,6 @@
       <!-- 上传页面 -->
       <div v-if="activeTab === 'upload'" class="page">
         <h1>📤 上传衣服</h1>
-
         <div class="upload-card">
           <div class="upload-area" @click="triggerUpload" @dragover.prevent @drop.prevent="handleDrop">
             <input type="file" ref="fileInput" @change="handleFileSelect" accept="image/*" hidden>
@@ -24,7 +24,6 @@
             </div>
             <img v-else :src="previewImage" class="preview-img">
           </div>
-
           <div v-if="previewImage" class="form">
             <div class="form-row">
               <select v-model="form.season">
@@ -44,12 +43,10 @@
               </select>
             </div>
             <input v-model="form.keywords" placeholder="关键词，如：蓝色、休闲" class="keywords-input">
-
             <label class="checkbox">
               <input type="checkbox" v-model="form.removeBg">
-              ✂️ 自动抠图（去除背景）
+              ✂️ 自动抠图（去除背景并裁切空白）
             </label>
-
             <button class="save-btn" @click="saveCloth" :disabled="saving">
               {{ saving ? '处理中...' : '💾 保存' }}
             </button>
@@ -60,7 +57,6 @@
       <!-- 浏览页面 -->
       <div v-if="activeTab === 'browse'" class="page">
         <h1>👚 我的衣橱</h1>
-
         <div class="filters">
           <select v-model="filter.season">
             <option value="">全部季节</option>
@@ -79,9 +75,7 @@
           </select>
           <input v-model="filter.keyword" placeholder="搜索关键词...">
         </div>
-
         <p class="count">共 {{ filteredClothes.length }} 件</p>
-
         <div class="cloth-grid">
           <div v-for="cloth in filteredClothes" :key="cloth.id" class="cloth-card">
             <img :src="getImageUrl(cloth.image_path)" @error="handleImageError">
@@ -93,7 +87,6 @@
             <button class="delete-btn" @click="deleteCloth(cloth.id)">🗑️</button>
           </div>
         </div>
-
         <div v-if="filteredClothes.length === 0" class="empty">
           <p>还没有衣服</p>
         </div>
@@ -102,7 +95,6 @@
       <!-- 搭配页面 -->
       <div v-if="activeTab === 'match'" class="page">
         <h1>✨ 搭配</h1>
-
         <div class="match-layout">
           <!-- 左侧：衣服列表 -->
           <div class="cloth-list-panel">
@@ -125,34 +117,87 @@
           <div class="outfit-panel">
             <div class="outfit-header">
               <h3>🎨 搭配画布</h3>
-              <button @click="clearOutfit" class="clear-btn">🗑️ 清空</button>
-            </div>
-
-            <div class="size-control">
-              <label>图片大小：</label>
-              <input type="range" v-model="outfitSize" min="60" max="200">
-              <span>{{ outfitSize }}px</span>
-            </div>
-
-            <div class="outfit-canvas" ref="canvas">
-              <div v-for="(item, index) in outfit" :key="index"
-                   class="outfit-item"
-                   :style="{ left: item.x + 'px', top: item.y + 'px', width: outfitSize + 'px' }"
-                   @mousedown="startDrag($event, index)"
-                   @touchstart="startDrag($event, index)">
-                <img :src="item.image" @error="handleImageError">
-                <span class="item-label">{{ item.category }}</span>
-                <button class="remove-item" @click="removeFromOutfit(index)">×</button>
+              <div class="header-btns">
+                <button @click="showSaveDialog = true" class="save-outfit-btn" :disabled="outfit.length === 0">💾 保存搭配</button>
+                <button @click="clearOutfit" class="clear-btn">🗑️ 清空</button>
               </div>
+            </div>
 
+            <!-- 选中图片的控制面板 -->
+            <div v-if="selectedItemIndex >= 0 && outfit[selectedItemIndex]" class="item-controls">
+              <div class="control-row">
+                <label>大小: {{ outfit[selectedItemIndex].size }}px</label>
+                <input type="range" v-model="outfit[selectedItemIndex].size" min="50" max="200">
+              </div>
+              <div class="control-row">
+                <label>旋转: {{ outfit[selectedItemIndex].rotation }}°</label>
+                <input type="range" v-model="outfit[selectedItemIndex].rotation" min="-180" max="180">
+              </div>
+            </div>
+
+            <div class="outfit-canvas" ref="canvasRef" @click.self="selectedItemIndex = -1">
+              <div v-for="(item, index) in outfit" :key="'item-' + item.clothId + '-' + index"
+                   class="outfit-item"
+                   :class="{ selected: selectedItemIndex === index }"
+                   :style="{
+                     left: item.x + 'px',
+                     top: item.y + 'px',
+                     width: item.size + 'px',
+                     zIndex: item.zIndex || 1,
+                     transform: 'rotate(' + item.rotation + 'deg)'
+                   }"
+                   @mousedown.stop="startDrag($event, index)"
+                   @touchstart.stop="startDrag($event, index)"
+                   @click.stop="selectItem(index)">
+                <img :src="item.image" @error="handleImageError" draggable="false">
+                <span class="item-label">{{ item.category }}</span>
+                <button class="remove-item" @click.stop="removeFromOutfit(index)">×</button>
+              </div>
               <div v-if="outfit.length === 0" class="canvas-hint">
-                点击左侧衣服添加到这里
+                点击左侧衣服添加到这里<br>点击图片可调整大小和旋转
               </div>
             </div>
           </div>
         </div>
       </div>
+
+      <!-- 搭配库页面 -->
+      <div v-if="activeTab === 'outfits'" class="page">
+        <h1>📚 搭配库</h1>
+        <p class="count">共 {{ savedOutfits.length }} 个搭配</p>
+        <div class="outfits-grid">
+          <div v-for="outfit in savedOutfits" :key="outfit.id" class="outfit-card">
+            <div class="outfit-preview">
+              <img v-for="(item, idx) in parseItems(outfit.items).slice(0, 3)" :key="idx"
+                   :src="item.image" class="preview-item">
+            </div>
+            <div class="outfit-info">
+              <h4>{{ outfit.name }}</h4>
+              <p>{{ parseItems(outfit.items).length }} 件</p>
+            </div>
+            <div class="outfit-actions">
+              <button @click="loadOutfit(outfit)">加载</button>
+              <button @click="deleteOutfit(outfit.id)" class="delete">删除</button>
+            </div>
+          </div>
+        </div>
+        <div v-if="savedOutfits.length === 0" class="empty">
+          <p>还没有保存的搭配</p>
+        </div>
+      </div>
     </main>
+
+    <!-- 保存搭配弹窗 -->
+    <div v-if="showSaveDialog" class="modal-overlay" @click.self="showSaveDialog = false">
+      <div class="modal">
+        <h3>保存搭配</h3>
+        <input v-model="outfitName" placeholder="输入搭配名称" class="modal-input">
+        <div class="modal-btns">
+          <button @click="showSaveDialog = false">取消</button>
+          <button @click="saveOutfit" class="primary">保存</button>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -160,12 +205,14 @@
 import { ref, reactive, computed, onMounted } from 'vue'
 import axios from 'axios'
 
-const API_URL = 'http://localhost:8501'
+const API_URL = 'http://localhost:5000'
 
 // 状态
 const activeTab = ref('upload')
 const clothes = ref([])
 const saving = ref(false)
+const showSaveDialog = ref(false)
+const outfitName = ref('')
 
 // 上传相关
 const fileInput = ref(null)
@@ -186,11 +233,14 @@ const filter = reactive({
 
 // 搭配相关
 const outfit = ref([])
-const outfitSize = ref(100)
+const selectedItemIndex = ref(-1)
 const expandedCategories = ref(['上装', '下装'])
 const isDragging = ref(false)
 const dragIndex = ref(-1)
 const dragOffset = reactive({ x: 0, y: 0 })
+
+// 搭配库
+const savedOutfits = ref([])
 
 const categories = [
   { value: '上装', label: '上装', icon: '👕' },
@@ -208,6 +258,16 @@ const loadClothes = async () => {
     clothes.value = res.data
   } catch (e) {
     console.error('加载失败', e)
+  }
+}
+
+// 加载搭配库
+const loadOutfits = async () => {
+  try {
+    const res = await axios.get(`${API_URL}/api/outfits`)
+    savedOutfits.value = res.data
+  } catch (e) {
+    console.error('加载搭配库失败', e)
   }
 }
 
@@ -259,7 +319,6 @@ const saveCloth = async () => {
     alert('请选择季节和类型')
     return
   }
-
   saving.value = true
   try {
     const file = fileInput.value?.files[0]
@@ -309,43 +368,77 @@ const toggleCategory = (cat) => {
 }
 
 const addToOutfit = (cloth) => {
+  const canvas = document.querySelector('.outfit-canvas')
+  let startX = 20
+  let startY = 20
+
+  if (canvas) {
+    startX = Math.random() * (canvas.offsetWidth - 150) + 20
+    startY = Math.random() * (canvas.offsetHeight - 150) + 20
+  }
+
   outfit.value.push({
     clothId: cloth.id,
     category: cloth.category,
     image: getImageUrl(cloth.image_path),
-    x: 20 + (outfit.value.length % 3) * 120,
-    y: 20 + Math.floor(outfit.value.length / 3) * 120
+    x: startX,
+    y: startY,
+    size: 100,
+    rotation: 0,
+    zIndex: 1
   })
+}
+
+const selectItem = (index) => {
+  selectedItemIndex.value = index
 }
 
 const removeFromOutfit = (index) => {
   outfit.value.splice(index, 1)
+  if (selectedItemIndex.value === index) {
+    selectedItemIndex.value = -1
+  }
 }
 
 const clearOutfit = () => {
   outfit.value = []
+  selectedItemIndex.value = -1
 }
 
 // 拖拽
+const canvasRef = ref(null)
+
 const startDrag = (e, index) => {
   e.preventDefault()
+  e.stopPropagation()
+
   isDragging.value = true
   dragIndex.value = index
+  selectedItemIndex.value = index
+
+  const canvas = document.querySelector('.outfit-canvas')
+  const rect = canvas.getBoundingClientRect()
 
   const clientX = e.touches ? e.touches[0].clientX : e.clientX
   const clientY = e.touches ? e.touches[0].clientY : e.clientY
 
-  dragOffset.x = clientX - outfit.value[index].x
-  dragOffset.y = clientY - outfit.value[index].y
+  const mouseX = clientX - rect.left
+  const mouseY = clientY - rect.top
+
+  dragOffset.x = mouseX - outfit.value[index].x
+  dragOffset.y = mouseY - outfit.value[index].y
+
+  outfit.value[index].zIndex = 100
 
   document.addEventListener('mousemove', onDrag)
   document.addEventListener('mouseup', stopDrag)
-  document.addEventListener('touchmove', onDrag)
+  document.addEventListener('touchmove', onDrag, { passive: false })
   document.addEventListener('touchend', stopDrag)
 }
 
 const onDrag = (e) => {
-  if (!isDragging.value) return
+  if (!isDragging.value || dragIndex.value < 0) return
+  e.preventDefault()
 
   const clientX = e.touches ? e.touches[0].clientX : e.clientX
   const clientY = e.touches ? e.touches[0].clientY : e.clientY
@@ -354,23 +447,70 @@ const onDrag = (e) => {
   if (!canvas) return
 
   const rect = canvas.getBoundingClientRect()
-  let x = clientX - dragOffset.x - rect.left
-  let y = clientY - dragOffset.y - rect.top
+  const item = outfit.value[dragIndex.value]
 
-  x = Math.max(0, Math.min(x, rect.width - outfitSize.value))
-  y = Math.max(0, Math.min(y, rect.height - outfitSize.value))
+  let x = clientX - rect.left - dragOffset.x
+  let y = clientY - rect.top - dragOffset.y
 
-  outfit.value[dragIndex.value].x = x
-  outfit.value[dragIndex.value].y = y
+  x = Math.max(0, Math.min(x, rect.width - item.size))
+  y = Math.max(0, Math.min(y, rect.height - item.size - 20))
+
+  item.x = x
+  item.y = y
 }
 
 const stopDrag = () => {
+  if (dragIndex.value >= 0 && outfit.value[dragIndex.value]) {
+    outfit.value[dragIndex.value].zIndex = 1
+  }
   isDragging.value = false
   dragIndex.value = -1
   document.removeEventListener('mousemove', onDrag)
   document.removeEventListener('mouseup', stopDrag)
   document.removeEventListener('touchmove', onDrag)
   document.removeEventListener('touchend', stopDrag)
+}
+
+// 保存搭配
+const saveOutfit = async () => {
+  if (!outfitName.value.trim()) {
+    alert('请输入搭配名称')
+    return
+  }
+  try {
+    await axios.post(`${API_URL}/api/outfits`, {
+      name: outfitName.value,
+      items: outfit.value
+    })
+    alert('保存成功！')
+    showSaveDialog.value = false
+    outfitName.value = ''
+  } catch (e) {
+    alert('保存失败: ' + e.message)
+  }
+}
+
+// 加载搭配
+const loadOutfit = (saved) => {
+  outfit.value = parseItems(saved.items)
+  activeTab.value = 'match'
+}
+
+// 删除搭配
+const deleteOutfit = async (id) => {
+  if (confirm('确定删除？')) {
+    await axios.delete(`${API_URL}/api/outfits/${id}`)
+    loadOutfits()
+  }
+}
+
+// 解析items JSON
+const parseItems = (itemsStr) => {
+  try {
+    return JSON.parse(itemsStr) || []
+  } catch {
+    return []
+  }
 }
 </script>
 
@@ -415,7 +555,7 @@ body {
   background: transparent;
   border: none;
   color: #aaa;
-  padding: 16px 20px;
+  padding: 16px 16px;
   cursor: pointer;
   font-size: 14px;
   transition: all 0.2s;
@@ -627,7 +767,7 @@ body {
 }
 
 .cloth-list-panel {
-  width: 300px;
+  width: 250px;
   background: white;
   border-radius: 12px;
   padding: 16px;
@@ -661,8 +801,8 @@ body {
 }
 
 .mini-cloth {
-  width: 60px;
-  height: 60px;
+  width: 50px;
+  height: 50px;
   border-radius: 6px;
   overflow: hidden;
   cursor: pointer;
@@ -695,6 +835,24 @@ body {
   margin-bottom: 12px;
 }
 
+.header-btns {
+  display: flex;
+  gap: 8px;
+}
+
+.save-outfit-btn {
+  padding: 6px 12px;
+  background: #1a1a1a;
+  color: white;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.save-outfit-btn:disabled {
+  opacity: 0.5;
+}
+
 .clear-btn {
   padding: 6px 12px;
   background: #f5f5f5;
@@ -703,14 +861,28 @@ body {
   cursor: pointer;
 }
 
-.size-control {
+.item-controls {
   display: flex;
-  align-items: center;
-  gap: 10px;
+  gap: 20px;
+  padding: 12px;
+  background: #f9f9f9;
+  border-radius: 8px;
   margin-bottom: 12px;
 }
 
-.size-control input[type="range"] {
+.control-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: 1;
+}
+
+.control-row label {
+  font-size: 13px;
+  min-width: 100px;
+}
+
+.control-row input[type="range"] {
   flex: 1;
 }
 
@@ -726,6 +898,12 @@ body {
   position: absolute;
   cursor: move;
   user-select: none;
+  transition: box-shadow 0.2s;
+}
+
+.outfit-item.selected {
+  box-shadow: 0 0 0 3px #1a1a1a;
+  border-radius: 8px;
 }
 
 .outfit-item img {
@@ -767,5 +945,121 @@ body {
   transform: translate(-50%, -50%);
   color: #999;
   font-size: 16px;
+  text-align: center;
+}
+
+/* 搭配库 */
+.outfits-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 16px;
+}
+
+.outfit-card {
+  background: white;
+  border-radius: 12px;
+  overflow: hidden;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+}
+
+.outfit-preview {
+  display: flex;
+  gap: 4px;
+  padding: 8px;
+  background: #f5f5f5;
+  height: 120px;
+}
+
+.preview-item {
+  flex: 1;
+  object-fit: cover;
+  border-radius: 6px;
+}
+
+.outfit-info {
+  padding: 12px;
+}
+
+.outfit-info h4 {
+  font-size: 14px;
+  margin-bottom: 4px;
+}
+
+.outfit-info p {
+  font-size: 12px;
+  color: #666;
+}
+
+.outfit-actions {
+  display: flex;
+  border-top: 1px solid #eee;
+}
+
+.outfit-actions button {
+  flex: 1;
+  padding: 10px;
+  border: none;
+  background: white;
+  cursor: pointer;
+  font-size: 13px;
+}
+
+.outfit-actions button:first-child {
+  border-right: 1px solid #eee;
+}
+
+.outfit-actions button.delete {
+  color: #ff4444;
+}
+
+/* 弹窗 */
+.modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0,0,0,0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.modal {
+  background: white;
+  border-radius: 12px;
+  padding: 24px;
+  width: 300px;
+}
+
+.modal h3 {
+  margin-bottom: 16px;
+}
+
+.modal-input {
+  width: 100%;
+  padding: 10px;
+  border: 1px solid #ddd;
+  border-radius: 6px;
+  margin-bottom: 16px;
+}
+
+.modal-btns {
+  display: flex;
+  gap: 10px;
+}
+
+.modal-btns button {
+  flex: 1;
+  padding: 10px;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.modal-btns button.primary {
+  background: #1a1a1a;
+  color: white;
 }
 </style>

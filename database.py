@@ -18,6 +18,14 @@ def init_db():
             created_at DATETIME DEFAULT CURRENT_TIMESTAMP
         )
     ''')
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS outfits (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT,
+            items TEXT,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        )
+    ''')
     conn.commit()
     conn.close()
 
@@ -84,3 +92,31 @@ def get_clothes_by_category(category):
     rows = cursor.fetchall()
     conn.close()
     return rows
+
+def save_outfit(name, items_json):
+    """保存搭配"""
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    cursor.execute(
+        "INSERT INTO outfits (name, items) VALUES (?, ?)",
+        (name, items_json)
+    )
+    conn.commit()
+    conn.close()
+
+def get_all_outfits():
+    """获取所有搭配"""
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM outfits ORDER BY created_at DESC")
+    rows = cursor.fetchall()
+    conn.close()
+    return rows
+
+def delete_outfit(outfit_id):
+    """删除搭配"""
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    cursor.execute("DELETE FROM outfits WHERE id = ?", (outfit_id,))
+    conn.commit()
+    conn.close()
