@@ -87,11 +87,15 @@
             <option value="首饰">首饰</option>
             <option value="其他配饰">其他配饰</option>
           </select>
+          <select v-model="filter.color">
+            <option value="">全部颜色</option>
+            <option v-for="c in availableColors" :key="c" :value="c">{{ c }}</option>
+          </select>
           <input v-model="filter.keyword" placeholder="搜索关键词...">
         </div>
         <p class="count">共 {{ filteredClothes.length }} 件</p>
         <div class="cloth-grid">
-          <div v-for="cloth in filteredClothes" :key="cloth.id" class="cloth-card">
+          <div v-for="cloth in filteredClothes" :key="cloth.id" class="cloth-card" @click="openDetail(cloth)">
             <img :src="getImageUrl(cloth.image_path)" @error="handleImageError">
             <div class="cloth-info">
               <div class="tags-row">
@@ -108,11 +112,44 @@
                 <span v-if="cloth.price" class="price">¥{{ cloth.price }}</span>
               </p>
             </div>
-            <button class="delete-btn" @click="deleteCloth(cloth.id)">🗑️</button>
+            <button class="delete-btn" @click.stop="deleteCloth(cloth.id)">🗑️</button>
           </div>
         </div>
         <div v-if="filteredClothes.length === 0" class="empty">
           <p>还没有衣服</p>
+        </div>
+      </div>
+
+      <!-- 详情弹窗 -->
+      <div v-if="selectedCloth" class="modal-overlay" @click.self="selectedCloth = null">
+        <div class="detail-modal">
+          <button class="close-btn" @click="selectedCloth = null">×</button>
+          <img :src="getImageUrl(selectedCloth.image_path)" class="detail-image" @error="handleImageError">
+          <div class="detail-info">
+            <h2>{{ selectedCloth.category }}</h2>
+            <div class="detail-tags">
+              <span class="tag season">{{ selectedCloth.season }}</span>
+              <span class="tag category">{{ selectedCloth.category }}</span>
+              <span v-if="selectedCloth.color" class="tag color">{{ selectedCloth.color }}</span>
+              <span v-if="selectedCloth.style" class="tag style">{{ selectedCloth.style }}</span>
+            </div>
+            <div class="detail-row" v-if="selectedCloth.keywords">
+              <span class="label">关键词</span>
+              <span class="value">{{ selectedCloth.keywords }}</span>
+            </div>
+            <div class="detail-row" v-if="selectedCloth.brand">
+              <span class="label">品牌</span>
+              <span class="value">{{ selectedCloth.brand }}</span>
+            </div>
+            <div class="detail-row" v-if="selectedCloth.price">
+              <span class="label">价格</span>
+              <span class="value price">¥{{ selectedCloth.price }}</span>
+            </div>
+            <div class="detail-actions">
+              <button class="add-match-btn" @click="addToOutfitFromDetail">加入搭配</button>
+              <button class="delete-detail-btn" @click="deleteFromDetail">删除</button>
+            </div>
+          </div>
         </div>
       </div>
 
@@ -308,8 +345,11 @@ const form = reactive({
 const filter = reactive({
   season: '',
   category: '',
+  color: '',
   keyword: ''
 })
+
+const selectedCloth = ref(null)
 
 const outfit = ref([])
 const selectedItemIndex = ref(-1)
@@ -359,10 +399,20 @@ const loadStats = async () => {
 
 onMounted(loadClothes)
 
+// 可用颜色列表
+const availableColors = computed(() => {
+  const colors = new Set()
+  clothes.value.forEach(c => {
+    if (c.color) colors.add(c.color)
+  })
+  return Array.from(colors).sort()
+})
+
 const filteredClothes = computed(() => {
   return clothes.value.filter(c => {
     if (filter.season && c.season !== filter.season) return false
     if (filter.category && c.category !== filter.category) return false
+    if (filter.color && c.color !== filter.color) return false
     if (filter.keyword && !c.keywords?.includes(filter.keyword)) return false
     return true
   })
@@ -436,6 +486,27 @@ const saveCloth = async () => {
 const deleteCloth = async (id) => {
   if (confirm('确定删除？')) {
     await axios.delete(`${API_URL}/api/clothes/${id}`)
+    loadClothes()
+  }
+}
+
+// 详情弹窗相关
+const openDetail = (cloth) => {
+  selectedCloth.value = cloth
+}
+
+const addToOutfitFromDetail = () => {
+  if (selectedCloth.value) {
+    addToOutfit(selectedCloth.value)
+    selectedCloth.value = null
+    activeTab.value = 'match'
+  }
+}
+
+const deleteFromDetail = async () => {
+  if (selectedCloth.value && confirm('确定删除？')) {
+    await axios.delete(`${API_URL}/api/clothes/${selectedCloth.value.id}`)
+    selectedCloth.value = null
     loadClothes()
   }
 }
@@ -1007,4 +1078,92 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
 .modal-btns { display: flex; gap: 10px; }
 .modal-btns button { flex: 1; padding: 10px; border: none; border-radius: 6px; cursor: pointer; }
 .modal-btns button.primary { background: #1a1a1a; color: white; }
+
+/* 详情弹窗 */
+.detail-modal {
+  background: white;
+  border-radius: 16px;
+  width: 90%;
+  max-width: 600px;
+  max-height: 90vh;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  position: relative;
+}
+.close-btn {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  width: 32px;
+  height: 32px;
+  border: none;
+  background: rgba(0,0,0,0.5);
+  color: white;
+  border-radius: 50%;
+  font-size: 20px;
+  cursor: pointer;
+  z-index: 10;
+}
+.detail-image {
+  width: 100%;
+  max-height: 400px;
+  object-fit: contain;
+  background: #f5f5f5;
+}
+.detail-info {
+  padding: 20px;
+}
+.detail-info h2 {
+  font-size: 20px;
+  margin-bottom: 12px;
+}
+.detail-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+.detail-row {
+  display: flex;
+  padding: 10px 0;
+  border-bottom: 1px solid #eee;
+}
+.detail-row .label {
+  width: 80px;
+  color: #666;
+  font-size: 14px;
+}
+.detail-row .value {
+  flex: 1;
+  font-size: 14px;
+}
+.detail-row .value.price {
+  color: #e74c3c;
+  font-weight: bold;
+}
+.detail-actions {
+  display: flex;
+  gap: 10px;
+  margin-top: 20px;
+}
+.add-match-btn {
+  flex: 1;
+  padding: 12px;
+  background: #1a1a1a;
+  color: white;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 14px;
+}
+.delete-detail-btn {
+  padding: 12px 24px;
+  background: #fff;
+  color: #e74c3c;
+  border: 1px solid #e74c3c;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 14px;
+}
 </style>
