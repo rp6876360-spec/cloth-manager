@@ -8,6 +8,8 @@ def init_db():
     """初始化数据库"""
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
+
+    # 创建衣服表
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS clothes (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -22,6 +24,8 @@ def init_db():
             created_at DATETIME DEFAULT CURRENT_TIMESTAMP
         )
     ''')
+
+    # 创建搭配表
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS outfits (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -30,6 +34,21 @@ def init_db():
             created_at DATETIME DEFAULT CURRENT_TIMESTAMP
         )
     ''')
+
+    # 迁移：添加新字段（如果不存在）
+    try:
+        cursor.execute("ALTER TABLE clothes ADD COLUMN brand TEXT")
+    except: pass
+    try:
+        cursor.execute("ALTER TABLE clothes ADD COLUMN price REAL")
+    except: pass
+    try:
+        cursor.execute("ALTER TABLE clothes ADD COLUMN style TEXT")
+    except: pass
+    try:
+        cursor.execute("ALTER TABLE clothes ADD COLUMN color TEXT")
+    except: pass
+
     conn.commit()
     conn.close()
 
